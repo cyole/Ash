@@ -1,12 +1,12 @@
 ---
 name: local-testing
-description: Hermes local validation guide for Vite, React, Tauri, Rust, and UI smoke tests. Use when running or deciding validation after code changes, debugging local app behavior, checking desktop runtime work, or verifying build failures.
+description: "Local validation guide - Vite browser checks, Tauri shell checks, Rust `cargo check`, UI smoke tests, and focused build triage. Use when deciding what to run after changes, debugging local app behavior, verifying desktop runtime work, or investigating build failures. Triggers on 'local test', 'smoke test', 'pnpm build', 'tauri dev', 'cargo check', 'browser check', 'manual test'."
 user-invocable: false
 ---
 
-# Hermes Local Testing
+# Local Testing
 
-## Default Checks
+## Default Commands
 
 Run these after meaningful frontend or shared TypeScript changes:
 
@@ -22,7 +22,7 @@ cd src-tauri && cargo check
 
 Run both when the change crosses the frontend/native boundary.
 
-## Dev Servers
+## Dev Servers and URLs
 
 Frontend only:
 
@@ -44,7 +44,19 @@ pnpm tauri:dev
 
 Use the full Tauri app when testing native commands, file dialogs, process control, app data paths, window behavior, or bundled runtime resources.
 
-## UI Smoke Test Checklist
+## Browser UI Smoke Flow
+
+When the change affects visible React UI:
+
+1. Start `pnpm dev`.
+2. Open `http://127.0.0.1:1420`.
+3. Check the changed route at desktop and narrow widths.
+4. Exercise the main action, empty state, loading/error state if reachable.
+5. Inspect for text overlap, broken scroll containers, missing accessible labels, and console errors.
+
+Use the in-app Browser plugin when available. If using a CLI browser tool, take a fresh snapshot after navigation or DOM changes before interacting with element refs.
+
+## UI Checklist
 
 - App shell renders without overflow at narrow and desktop sizes.
 - Sidebar navigation reaches changed routes.
@@ -52,15 +64,16 @@ Use the full Tauri app when testing native commands, file dialogs, process contr
 - Chat streaming can start, stop, and retry.
 - Runtime/API errors are visible and actionable.
 
-## Focused Debugging
+## Build Failure Triage
 
 - For TypeScript errors, read the first failing file and fix root causes before rerunning.
 - For build failures after UI edits, check imports and type-only imports first.
 - For Tauri failures, run `cargo check` inside `src-tauri` and inspect the first Rust compiler error.
-- For Hermes API failures, inspect `src/lib/hermes/api.ts` and the integration docs before changing UI state.
+- For API failures, inspect `src/lib/hermes/api.ts` and the integration docs before changing UI state.
+- If a command produces many errors, fix the first real source error rather than chasing downstream noise.
 
 ## Avoid
 
 - Do not run long all-environment commands when a focused build or `cargo check` is enough.
-- Do not require a real Hermes runtime for pure UI layout changes.
+- Do not require a real local runtime for pure UI layout changes.
 - Do not hide failed validation in final notes.

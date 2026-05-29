@@ -1,15 +1,16 @@
 ---
-name: routes-and-features
-description: Hermes routing and feature module guide. Use when adding, moving, or editing routes in `src/app/router.tsx`, creating pages under `src/features/**`, changing navigation, or deciding whether code belongs in route, layout, feature, common component, or lib.
+name: spa-routes
+description: "SPA routing and feature split - thin route registration in `src/app/router.tsx`, feature-owned pages under `src/features/**`, app shell in `src/components/layout`, and sidebar navigation. Use when adding, moving, or editing routes, pages, feature modules, or navigation. Triggers on 'add route', 'new page', 'route', 'sidebar nav', 'feature folder', '`src/app/router.tsx`', '`src/features`'."
 user-invocable: false
 ---
 
-# Hermes Routes and Features
+# SPA Routes and Features Guide
 
-Hermes uses a small route entry and feature-owned pages:
+This project keeps routing small and feature ownership explicit:
 
-- `src/app/router.tsx` registers routes.
+- `src/app/router.tsx` registers route objects.
 - `src/components/layout/AppLayout.tsx` owns the main shell.
+- `src/components/layout/AppSidebar.tsx` owns primary navigation.
 - `src/features/<feature>/<FeaturePage>.tsx` owns each page.
 - `src/features/<feature>/components` owns feature-specific UI.
 
@@ -18,8 +19,8 @@ Hermes uses a small route entry and feature-owned pages:
 1. Create or reuse a feature folder under `src/features/<name>/`.
 2. Put the page component in that feature folder.
 3. Register the route in `src/app/router.tsx`.
-4. Add navigation in `src/components/layout/AppSidebar.tsx` if the page should be user-visible.
-5. Keep URL paths stable and lowercase.
+4. Add navigation in `src/components/layout/AppSidebar.tsx` only if the page should be user-visible.
+5. Keep URL paths stable, lowercase, and human-readable.
 
 ## What Belongs Where
 
@@ -28,9 +29,10 @@ Hermes uses a small route entry and feature-owned pages:
 | Route registration | `src/app/router.tsx` |
 | App shell, sidebar, status bar | `src/components/layout/` |
 | Shared UI primitives | `src/components/ui/` |
-| Shared simple page pieces | `src/components/common/` |
+| Shared page pieces | `src/components/common/` |
 | Domain page and panels | `src/features/<feature>/` |
-| Hermes protocol/client logic | `src/lib/hermes/` |
+| Feature hooks/types/utils | `src/features/<feature>/hooks`, `types.ts`, `utils.ts` |
+| Protocol/client logic | `src/lib/hermes/` |
 | Tauri native bridge helpers | `src/lib/tauri.ts` |
 
 ## Feature Folder Shape
@@ -56,3 +58,4 @@ When routing changes, verify:
 - The index route still lands on a useful first screen.
 - The Tauri hash route works after refresh.
 - The page fits inside `AppLayout` without creating nested app shells.
+- Route-level loading and empty states still fit in the desktop shell.

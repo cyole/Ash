@@ -1,10 +1,10 @@
 ---
-name: chat-streaming-and-traces
-description: Hermes chat streaming, SSE parsing, trace panel, run events, approvals, and message state guide. Use when editing `src/features/chat/**`, `src/lib/hermes/api.ts`, stream parsing, stop/retry behavior, trace UI, tool/run status, or chat session handling.
+name: agent-tracing
+description: "Agent trace and chat-streaming guide - SSE parsing, run/tool event normalization, trace panel state, stop/retry behavior, and user-visible progress. Use when editing chat streaming, trace UI, run events, tool status, approvals, or session handling. Triggers on 'trace', 'SSE', 'stream', 'tool call', 'run event', 'approval', 'stop', 'retry', '`TracePanel`', '`stream-events`'."
 user-invocable: false
 ---
 
-# Hermes Chat Streaming and Traces
+# Agent Tracing and Streaming
 
 The chat surface should make long-running agent work visible without turning the UI into raw logs.
 
@@ -17,14 +17,14 @@ The chat surface should make long-running agent work visible without turning the
 | Chat workspace orchestration | `src/features/chat/hooks/useChatWorkspace.ts` |
 | Stream event normalization | `src/features/chat/stream-events.ts` |
 | Page composition | `src/features/chat/ChatPage.tsx` |
-| Messages | `src/features/chat/components/ChatMessageList.tsx`, `MessageBubble.tsx` |
+| Messages | `src/features/chat/components/ChatMessageList.tsx`, `MessageBubble.tsx`, `MarkdownMessage.tsx` |
 | Composer | `src/features/chat/components/ChatComposer.tsx` |
 | Trace UI | `src/features/chat/components/TracePanel.tsx` |
 
 ## Stream Rules
 
 - Parse SSE only at the transport boundary.
-- Keep `parseSseStream` tolerant of split chunks, multiline `data:`, JSON data, raw string data, and `[DONE]`.
+- Keep SSE parsing tolerant of split chunks, multiline `data:`, JSON data, raw string data, and `[DONE]`.
 - Convert provider-specific deltas in `stream-events.ts`; do not spread response-shape checks across components.
 - Treat event names as unstable unless documented. Provide safe fallbacks.
 - Abort streams with `AbortController` when stopping, retrying, changing sessions, or unmounting.
@@ -40,13 +40,13 @@ The chat surface should make long-running agent work visible without turning the
 
 ## Session Rules
 
-- Send `X-Hermes-Session-Id` for chat completions.
+- Send `X-Hermes-Session-Id` for chat completions when the backend expects it.
 - Preserve backend session IDs and avoid mixing messages between UI sessions.
-- Fallback endpoints in `HermesApiClient` are acceptable while upstream Hermes API compatibility is settling, but keep the fallback localized.
+- Keep fallback endpoints localized in `HermesApiClient` while upstream API compatibility is settling.
 
 ## UI Expectations
 
-- The composer should clearly reflect `apiReady`, model loading/error, streaming, retry, and stop states.
+- The composer reflects API readiness, model loading/error, streaming, retry, and stop states.
 - The message list should not jump during streaming.
 - The trace panel should be useful even when no trace events have arrived.
 - Errors should offer a next action: retry, check runtime status, or view diagnostics.
