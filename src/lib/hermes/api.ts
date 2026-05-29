@@ -15,10 +15,28 @@ import type {
 
 export const DEFAULT_HERMES_API_URL = "http://127.0.0.1:8642";
 
+const ENDPOINT_FALLBACK_STATUSES = new Set([404, 405, 501]);
+const MAX_ERROR_BODY_LENGTH = 1_000;
+
 interface HermesApiClientOptions {
   baseUrl?: string;
   apiKey?: string;
   fetchImpl?: typeof fetch;
+}
+
+export class HermesApiError extends Error {
+  readonly body: string;
+  readonly status: number;
+  readonly statusText: string;
+
+  constructor(status: number, statusText: string, body: string) {
+    const detail = trimErrorBody(body);
+    super(`Hermes API request failed: ${status} ${statusText}${detail ? `: ${detail}` : ""}`);
+    this.name = "HermesApiError";
+    this.body = body;
+    this.status = status;
+    this.statusText = statusText;
+  }
 }
 
 export class HermesApiClient implements HermesBackend {
@@ -42,71 +60,61 @@ export class HermesApiClient implements HermesBackend {
   }
 
   async listSessions(): Promise<HermesSession[]> {
-    try {
-      const response = await this.request<ListResponse<HermesSession>>("/api/sessions");
-      return normalizeSessionsResponse(response);
-    } catch (error) {
-      const response = await this.request<ListResponse<HermesSession>>(
-        "/api/hermes/sessions?limit=100",
-      );
-      return normalizeSessionsResponse(response);
-    }
+    const response = await requestWithEndpointFallback(
+      () => this.request<ListResponse<HermesSession>>("/api/sessions"),
+      () => this.request<ListResponse<HermesSession>>("/api/hermes/sessions?limit=100"),
+    );
+    return normalizeSessionsResponse(response);
   }
 
   async createSession(input: CreateSessionInput = {}): Promise<HermesSession> {
-    try {
-      const response = await this.request<HermesSession | { session: HermesSession }>("/api/sessions", {
+    const response = await requestWithEndpointFallback(
+      () => this.request<HermesSession | { session: HermesSession }>("/api/sessions", {
         method: "POST",
         body: JSON.stringify(input),
-      });
-      return isSessionWrapper(response) ? response.session : response;
-    } catch {
-      const response = await this.request<HermesSession | { session: HermesSession }>("/api/hermes/sessions", {
+      }),
+      () => this.request<HermesSession | { session: HermesSession }>("/api/hermes/sessions", {
         method: "POST",
         body: JSON.stringify(input),
-      });
-      return isSessionWrapper(response) ? response.session : response;
-    }
+      }),
+    );
+    return isSessionWrapper(response) ? response.session : response;
   }
 
   async renameSession(input: RenameSessionInput): Promise<void> {
-    try {
-      await this.request(`/api/sessions/${encodeURIComponent(input.sessionId)}`, {
+    await requestWithEndpointFallback(
+      () => this.request(`/api/sessions/${encodeURIComponent(input.sessionId)}`, {
         method: "PATCH",
         body: JSON.stringify({ title: input.title }),
-      });
-    } catch {
-      await this.request(`/api/hermes/sessions/${encodeURIComponent(input.sessionId)}/rename`, {
+      }),
+      () => this.request(`/api/hermes/sessions/${encodeURIComponent(input.sessionId)}/rename`, {
         method: "POST",
         body: JSON.stringify({ title: input.title }),
-      });
-    }
+      }),
+    );
   }
 
   async deleteSession(sessionId: string): Promise<void> {
-    try {
-      await this.request(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+    await requestWithEndpointFallback(
+      () => this.request(`/api/sessions/${encodeURIComponent(sessionId)}`, {
         method: "DELETE",
-      });
-    } catch {
-      await this.request(`/api/hermes/sessions/${encodeURIComponent(sessionId)}`, {
+      }),
+      () => this.request(`/api/hermes/sessions/${encodeURIComponent(sessionId)}`, {
         method: "DELETE",
-      });
-    }
+      }),
+    );
   }
 
   async listSessionMessages(sessionId: string): Promise<HermesMessage[]> {
-    try {
-      const response = await this.request<ListResponse<HermesMessage>>(
+    const response = await requestWithEndpointFallback(
+      () => this.request<ListResponse<HermesMessage>>(
         `/api/sessions/${encodeURIComponent(sessionId)}/messages`,
-      );
-      return normalizeMessagesResponse(response);
-    } catch {
-      const response = await this.request<ListResponse<HermesMessage>>(
+      ),
+      () => this.request<ListResponse<HermesMessage>>(
         `/api/hermes/sessions/conversations/${encodeURIComponent(sessionId)}/messages/paginated?offset=0&limit=300`,
-      );
-      return normalizeMessagesResponse(response);
-    }
+      ),
+    );
+    return normalizeMessagesResponse(response);
   }
 
   async *streamSessionChat(input: SessionChatInput): AsyncIterable<HermesStreamEvent> {
@@ -218,10 +226,7 @@ export class HermesApiClient implements HermesBackend {
     });
 
     if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      throw new Error(
-        `Hermes API request failed: ${response.status} ${response.statusText}${body.trim() ? `: ${body.trim()}` : ""}`,
-      );
+      throw new HermesApiError(response.status, response.statusText, await readResponseText(response));
     }
 
     return response;
@@ -229,6 +234,36 @@ export class HermesApiClient implements HermesBackend {
 }
 
 type ListResponse<T> = T[] | { data?: T[]; sessions?: T[]; messages?: T[] };
+
+async function requestWithEndpointFallback<T>(primary: () => Promise<T>, fallback: () => Promise<T>) {
+  try {
+    return await primary();
+  } catch (error) {
+    if (!isEndpointFallbackError(error)) {
+      throw error;
+    }
+
+    return fallback();
+  }
+}
+
+function isEndpointFallbackError(error: unknown) {
+  return error instanceof HermesApiError && ENDPOINT_FALLBACK_STATUSES.has(error.status);
+}
+
+async function readResponseText(response: Response) {
+  try {
+    return await response.text();
+  } catch (error) {
+    console.error("Failed to read Hermes API error response", error);
+    return "";
+  }
+}
+
+function trimErrorBody(body: string) {
+  const detail = body.trim();
+  return detail.length > MAX_ERROR_BODY_LENGTH ? `${detail.slice(0, MAX_ERROR_BODY_LENGTH)}...` : detail;
+}
 
 function normalizeSessionsResponse(response: ListResponse<HermesSession>) {
   return Array.isArray(response) ? response : response.data ?? response.sessions ?? [];
@@ -262,14 +297,14 @@ async function* parseSseStream(response: Response): AsyncIterable<HermesStreamEv
     }
 
     buffer += decoder.decode(value, { stream: true });
-    const chunks = buffer.split("\n\n");
-    buffer = chunks.pop() ?? "";
-
-    for (const chunk of chunks) {
-      const event = parseSseEvent(chunk);
+    let nextBlock = readNextSseBlock(buffer);
+    while (nextBlock) {
+      buffer = nextBlock.rest;
+      const event = parseSseEvent(nextBlock.block);
       if (event) {
         yield event;
       }
+      nextBlock = readNextSseBlock(buffer);
     }
   }
 
@@ -285,7 +320,7 @@ function parseSseEvent(chunk: string): HermesStreamEvent | null {
   let type = "message";
   const dataLines: string[] = [];
 
-  for (const line of chunk.split("\n")) {
+  for (const line of chunk.split(/\r?\n/)) {
     if (line.startsWith("event:")) {
       type = line.slice("event:".length).trim();
     }
@@ -305,6 +340,37 @@ function parseSseEvent(chunk: string): HermesStreamEvent | null {
     type,
     data: parseEventData(rawData),
   };
+}
+
+function readNextSseBlock(buffer: string) {
+  const delimiter = findSseDelimiter(buffer);
+  if (!delimiter) {
+    return null;
+  }
+
+  return {
+    block: buffer.slice(0, delimiter.index),
+    rest: buffer.slice(delimiter.index + delimiter.length),
+  };
+}
+
+function findSseDelimiter(buffer: string) {
+  const lfIndex = buffer.indexOf("\n\n");
+  const crlfIndex = buffer.indexOf("\r\n\r\n");
+
+  if (lfIndex === -1 && crlfIndex === -1) {
+    return null;
+  }
+
+  if (lfIndex === -1) {
+    return { index: crlfIndex, length: 4 };
+  }
+
+  if (crlfIndex === -1 || lfIndex < crlfIndex) {
+    return { index: lfIndex, length: 2 };
+  }
+
+  return { index: crlfIndex, length: 4 };
 }
 
 function parseEventData(rawData: string): unknown {

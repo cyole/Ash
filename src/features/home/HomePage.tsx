@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { hermesQueryKeys } from "@/lib/hermes/queries";
 import { getRuntimeStatus } from "@/lib/tauri";
 
 const quickActions = [
@@ -29,7 +30,7 @@ const quickActions = [
 
 export function HomePage() {
   const status = useQuery({
-    queryKey: ["runtime-status"],
+    queryKey: hermesQueryKeys.runtimeStatus,
     queryFn: getRuntimeStatus,
   });
 

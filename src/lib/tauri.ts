@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { errorMessage } from "@/lib/errors";
 import type { HermesStreamEvent, SessionChatInput } from "@/lib/hermes/types";
 import type {
   HermesExtensionsCatalog,
@@ -281,8 +282,4 @@ function normalizeOpenAIBaseUrl(input: string) {
 function openAIModelsUrl(baseUrl: string) {
   const lastSegment = baseUrl.split("/").filter(Boolean).at(-1) ?? "";
   return /^v\d+$/.test(lastSegment) ? `${baseUrl}/models` : `${baseUrl}/v1/models`;
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }

@@ -15,9 +15,12 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { errorMessage } from "@/lib/errors";
+import { hermesQueryKeys } from "@/lib/hermes/queries";
 import {
   checkGateway,
   getRuntimeStatus,
+  isTauriRuntime,
   prepareRuntime,
   runDoctor,
   setupPortal,
@@ -36,10 +39,6 @@ const actionLabels: Record<RuntimeAction, string> = {
   doctor: "运行诊断",
   portal: "连接门户",
 };
-
-function isTauriRuntime() {
-  return "__TAURI_INTERNALS__" in window;
-}
 
 function isDeveloperToolsEnabled() {
   const env = (import.meta as ImportMeta & { env?: { DEV?: boolean } }).env;
@@ -62,7 +61,7 @@ export function SettingsPage() {
   const developerToolsEnabled = useMemo(() => isDeveloperToolsEnabled(), []);
 
   const status = useQuery({
-    queryKey: ["runtime-status"],
+    queryKey: hermesQueryKeys.runtimeStatus,
     queryFn: getRuntimeStatus,
     refetchInterval: 15_000,
   });
@@ -88,7 +87,7 @@ export function SettingsPage() {
     },
     onSuccess: (result, action) => {
       setLastResult(result);
-      void queryClient.invalidateQueries({ queryKey: ["runtime-status"] });
+      void queryClient.invalidateQueries({ queryKey: hermesQueryKeys.runtimeStatus });
 
       if (result.success) {
         toast.success(`${actionLabels[action]}已完成`);
@@ -102,7 +101,7 @@ export function SettingsPage() {
         success: false,
         code: null,
         stdout: "",
-        stderr: error instanceof Error ? error.message : String(error),
+        stderr: errorMessage(error),
       });
     },
   });

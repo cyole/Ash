@@ -10,12 +10,15 @@ import {
   Server,
   Sparkles,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { errorMessage } from "@/lib/errors";
+import { hermesQueryKeys } from "@/lib/hermes/queries";
 import {
   fetchOpenAICompatibleModels,
   getModelConfigStatus,
@@ -44,12 +47,12 @@ export function ModelsPage() {
   const [modelsUrl, setModelsUrl] = useState("");
 
   const status = useQuery({
-    queryKey: ["model-config-status"],
+    queryKey: hermesQueryKeys.modelConfigStatus,
     queryFn: getModelConfigStatus,
   });
 
   const runtime = useQuery({
-    queryKey: ["runtime-status"],
+    queryKey: hermesQueryKeys.runtimeStatus,
     queryFn: getRuntimeStatus,
     refetchInterval: 15_000,
   });
@@ -83,8 +86,8 @@ export function ModelsPage() {
   const saveConfig = useMutation({
     mutationFn: () => saveOpenAICompatibleModelConfig(buildConfig()),
     onSuccess: (nextStatus) => {
-      queryClient.setQueryData(["model-config-status"], nextStatus);
-      void queryClient.invalidateQueries({ queryKey: ["runtime-status"] });
+      queryClient.setQueryData(hermesQueryKeys.modelConfigStatus, nextStatus);
+      void queryClient.invalidateQueries({ queryKey: hermesQueryKeys.runtimeStatus });
       toast.success("模型配置已保存");
     },
     onError: (error) => {
@@ -95,7 +98,7 @@ export function ModelsPage() {
   const restart = useMutation({
     mutationFn: restartGateway,
     onSuccess: (result) => {
-      void queryClient.invalidateQueries({ queryKey: ["runtime-status"] });
+      void queryClient.invalidateQueries({ queryKey: hermesQueryKeys.runtimeStatus });
       if (result.success) {
         toast.success("本地服务已重启");
       } else {
@@ -386,8 +389,4 @@ function normalizeProviderName(value: string) {
     .replace(/^-+|-+$/g, "");
 
   return normalized || DEFAULT_PROVIDER_NAME;
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }

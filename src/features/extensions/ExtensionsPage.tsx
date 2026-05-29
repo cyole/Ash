@@ -1,10 +1,13 @@
-import { useMemo, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { FolderTree, KeyRound, Loader2, Plug, RefreshCcw, Search, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { errorMessage } from "@/lib/errors";
+import { hermesQueryKeys } from "@/lib/hermes/queries";
 import { getExtensionsCatalog } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import type { HermesPluginCatalogItem, HermesSkillCatalogItem } from "@/types/hermes";
@@ -16,7 +19,7 @@ export function ExtensionsPage() {
   const [mode, setMode] = useState<CatalogMode>("all");
 
   const catalog = useQuery({
-    queryKey: ["hermes-extensions-catalog"],
+    queryKey: hermesQueryKeys.extensionsCatalog,
     queryFn: getExtensionsCatalog,
     retry: false,
   });
@@ -355,8 +358,4 @@ function kindLabel(kind: string) {
 
 function uniqueCount(values: string[]) {
   return new Set(values.filter(Boolean)).size;
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }

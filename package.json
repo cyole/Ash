@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 1420",
-    "build": "tsc && vite build",
+    "build": "pnpm typecheck && vite build",
+    "typecheck": "tsc --noEmit",
+    "cargo:check": "cargo check --manifest-path src-tauri/Cargo.toml",
+    "check": "pnpm typecheck && pnpm cargo:check",
     "preview": "vite preview --host 127.0.0.1 --port 1421",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",

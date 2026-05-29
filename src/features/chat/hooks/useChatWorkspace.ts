@@ -1,7 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import type { KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
 import { toast } from "sonner";
+import { createId, mapHermesMessage } from "@/features/chat/chat-utils";
+import { streamDelta, streamFinalText, streamTrace } from "@/features/chat/stream-events";
+import type { ChatMessage, TraceItem } from "@/features/chat/types";
+import { errorMessage, isAbortError } from "@/lib/errors";
 import { hermesQueryKeys, useHermesApi } from "@/lib/hermes/queries";
 import {
   sessionPreview,
@@ -11,9 +16,6 @@ import {
 } from "@/lib/hermes/session-format";
 import type { HermesSession } from "@/lib/hermes/types";
 import { streamHermesSessionChat } from "@/lib/tauri";
-import { createId, errorMessage, isAbortError, mapHermesMessage } from "@/features/chat/chat-utils";
-import { streamDelta, streamFinalText, streamTrace } from "@/features/chat/stream-events";
-import type { ChatMessage, TraceItem } from "@/features/chat/types";
 
 export function useChatWorkspace() {
   const queryClient = useQueryClient();
@@ -90,8 +92,9 @@ export function useChatWorkspace() {
   }, [activeSessionId, searchParams]);
 
   useEffect(() => {
-    if (!activeSessionId && sessions.length > 0) {
-      setActiveSessionId(sessions[0].id);
+    const firstSession = sessions[0];
+    if (!activeSessionId && firstSession) {
+      setActiveSessionId(firstSession.id);
     }
   }, [activeSessionId, sessions]);
 

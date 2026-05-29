@@ -4,6 +4,8 @@ import { DEFAULT_HERMES_API_URL, HermesApiClient } from "@/lib/hermes/api";
 import { getRuntimeApiAuth, getRuntimeStatus, isTauriRuntime } from "@/lib/tauri";
 
 export const hermesQueryKeys = {
+  extensionsCatalog: ["hermes-extensions-catalog"] as const,
+  modelConfigStatus: ["model-config-status"] as const,
   runtimeStatus: ["runtime-status"] as const,
   runtimeApiAuth: ["runtime-api-auth"] as const,
   sessions: (apiUrl: string, hasApiKey: boolean) => ["hermes-sessions", apiUrl, hasApiKey] as const,

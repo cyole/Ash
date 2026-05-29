@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { errorMessage } from "@/lib/errors";
 import { hermesQueryKeys, useHermesApi } from "@/lib/hermes/queries";
 import {
   formatSessionTime,
@@ -232,8 +233,4 @@ export function SessionsPage() {
       </div>
     </div>
   );
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }

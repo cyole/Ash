@@ -108,9 +108,9 @@ fn read_and_emit_sse(
         }
 
         buffer.push_str(&String::from_utf8_lossy(&chunk[..bytes_read]));
-        while let Some(index) = buffer.find("\n\n") {
+        while let Some((index, delimiter_len)) = find_sse_delimiter(&buffer) {
             let block = buffer[..index].to_string();
-            buffer = buffer[index + 2..].to_string();
+            buffer = buffer[index + delimiter_len..].to_string();
             emit_sse_block(&app, stream_id, &block)?;
         }
     }
@@ -120,6 +120,19 @@ fn read_and_emit_sse(
     }
 
     Ok(())
+}
+
+fn find_sse_delimiter(buffer: &str) -> Option<(usize, usize)> {
+    let lf_index = buffer.find("\n\n");
+    let crlf_index = buffer.find("\r\n\r\n");
+
+    match (lf_index, crlf_index) {
+        (None, None) => None,
+        (Some(index), None) => Some((index, 2)),
+        (None, Some(index)) => Some((index, 4)),
+        (Some(lf), Some(crlf)) if lf < crlf => Some((lf, 2)),
+        (Some(_), Some(crlf)) => Some((crlf, 4)),
+    }
 }
 
 fn emit_sse_block(app: &AppHandle, stream_id: &str, block: &str) -> Result<(), String> {

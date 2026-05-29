@@ -1,5 +1,5 @@
-import type { HermesMessage } from "@/lib/hermes/types";
 import type { ChatMessage, ChatRole } from "@/features/chat/types";
+import type { HermesMessage } from "@/lib/hermes/types";
 
 export function mapHermesMessage(message: HermesMessage): ChatMessage {
   return {
@@ -24,14 +24,6 @@ export function roleLabel(role: ChatRole) {
 export function createId(prefix: string) {
   const random = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
   return `${prefix}-${random}`;
-}
-
-export function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
-}
-
-export function isAbortError(error: unknown) {
-  return error instanceof DOMException && error.name === "AbortError";
 }
 
 function messageContent(content: unknown): string {

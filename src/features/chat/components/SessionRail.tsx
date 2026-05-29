@@ -2,6 +2,8 @@ import { Database, ListTree, Loader2, MessageSquarePlus, RefreshCcw, Search } fr
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PanelNotice } from "@/features/chat/components/PanelNotice";
+import { errorMessage } from "@/lib/errors";
 import {
   formatSessionTime,
   sessionPreview,
@@ -11,8 +13,6 @@ import {
 } from "@/lib/hermes/session-format";
 import type { HermesSession } from "@/lib/hermes/types";
 import { cn } from "@/lib/utils";
-import { errorMessage } from "@/features/chat/chat-utils";
-import { PanelNotice } from "@/features/chat/components/PanelNotice";
 
 interface SessionRailProps {
   activeSessionId: string | null;
