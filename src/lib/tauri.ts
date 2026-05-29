@@ -12,8 +12,35 @@ import type {
   RuntimeCommandResult,
 } from "@/types/hermes";
 
+export interface AppSettingsLoadResult {
+  path: string;
+  settings: Record<string, unknown> | null;
+}
+
 export function isTauriRuntime() {
   return "__TAURI_INTERNALS__" in window;
+}
+
+export async function loadAppSettings(): Promise<AppSettingsLoadResult> {
+  if (!isTauriRuntime()) {
+    return {
+      path: "browser-preview:localStorage/hermes.settings.v1",
+      settings: null,
+    };
+  }
+
+  return invoke<AppSettingsLoadResult>("app_settings_load");
+}
+
+export async function saveAppSettings(settings: Record<string, unknown>): Promise<AppSettingsLoadResult> {
+  if (!isTauriRuntime()) {
+    return {
+      path: "browser-preview:localStorage/hermes.settings.v1",
+      settings,
+    };
+  }
+
+  return invoke<AppSettingsLoadResult>("app_settings_save", { input: { settings } });
 }
 
 export async function getRuntimeStatus(): Promise<HermesStatus> {

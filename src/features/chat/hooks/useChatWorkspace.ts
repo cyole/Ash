@@ -1,5 +1,4 @@
-import type { KeyboardEvent } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
 import { toast } from "sonner";
@@ -8,12 +7,7 @@ import { streamDelta, streamFinalText, streamTrace } from "@/features/chat/strea
 import type { ChatMessage, TraceItem } from "@/features/chat/types";
 import { errorMessage, isAbortError } from "@/lib/errors";
 import { hermesQueryKeys, useHermesApi } from "@/lib/hermes/queries";
-import {
-  sessionPreview,
-  sessionSource,
-  sessionTitle,
-  sessionUpdatedAt,
-} from "@/lib/hermes/session-format";
+import { sessionUpdatedAt } from "@/lib/hermes/session-format";
 import type { HermesSession } from "@/lib/hermes/types";
 import { streamHermesSessionChat } from "@/lib/tauri";
 
@@ -22,7 +16,6 @@ export function useChatWorkspace() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [draftSessions, setDraftSessions] = useState<HermesSession[]>([]);
-  const [sessionFilter, setSessionFilter] = useState("");
   const [messagesBySession, setMessagesBySession] = useState<Record<string, ChatMessage[]>>({});
   const [tracesBySession, setTracesBySession] = useState<Record<string, TraceItem[]>>({});
   const [input, setInput] = useState("");
@@ -65,31 +58,29 @@ export function useChatWorkspace() {
     });
   }, [draftSessions, sessionsQuery.data]);
 
-  const filteredSessions = useMemo(() => {
-    const query = sessionFilter.trim().toLowerCase();
-    if (!query) {
-      return sessions;
-    }
-
-    return sessions.filter((session) => {
-      return [sessionTitle(session), sessionPreview(session), sessionSource(session), session.id]
-        .join(" ")
-        .toLowerCase()
-        .includes(query);
-    });
-  }, [sessionFilter, sessions]);
-
   const activeSession = sessions.find((session) => session.id === activeSessionId) ?? null;
   const activeMessages = activeSessionId ? messagesBySession[activeSessionId] ?? [] : [];
   const activeTraces = activeSessionId ? tracesBySession[activeSessionId] ?? [] : [];
   const isStreaming = streamingSessionId !== null;
 
+  const selectSession = useCallback((sessionId: string) => {
+    if (sessionId === activeSessionId) {
+      return;
+    }
+
+    if (streamingSessionId && streamingSessionId !== sessionId) {
+      abortRef.current?.abort();
+    }
+
+    setActiveSessionId(sessionId);
+  }, [activeSessionId, streamingSessionId]);
+
   useEffect(() => {
     const requestedSession = searchParams.get("session");
     if (requestedSession && requestedSession !== activeSessionId) {
-      setActiveSessionId(requestedSession);
+      selectSession(requestedSession);
     }
-  }, [activeSessionId, searchParams]);
+  }, [activeSessionId, searchParams, selectSession]);
 
   useEffect(() => {
     const firstSession = sessions[0];
@@ -109,6 +100,12 @@ export function useChatWorkspace() {
       return next;
     }, { replace: true });
   }, [activeSessionId, setSearchParams]);
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     if (!activeSessionId || !messagesQuery.data) {
@@ -199,7 +196,7 @@ export function useChatWorkspace() {
     setStreamingSessionId(sessionId);
     pushMessages(sessionId, [userMessage, assistantMessage]);
     pushTrace(sessionId, {
-      label: "run.started",
+      label: "开始运行",
       detail: selectedModel ? `模型：${selectedModel}` : "使用 Hermes 默认模型",
       status: "running",
     });
@@ -255,7 +252,7 @@ export function useChatWorkspace() {
       }));
       settleRunningTraces(sessionId, "done");
       pushTrace(sessionId, {
-        label: "run.completed",
+        label: "运行完成",
         detail: "本次流式响应已结束",
         status: "done",
       });
@@ -270,7 +267,7 @@ export function useChatWorkspace() {
       }));
       settleRunningTraces(sessionId, aborted ? "done" : "error");
       pushTrace(sessionId, {
-        label: aborted ? "run.stopped" : "run.failed",
+        label: aborted ? "已停止" : "运行失败",
         detail: aborted ? "用户停止了本次响应" : errorMessage(error),
         status: aborted ? "done" : "error",
       });
@@ -291,10 +288,34 @@ export function useChatWorkspace() {
     }
   }
 
-  function handleInputKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      void sendMessage();
+  function retryMessage(messageId: string) {
+    const messageIndex = activeMessages.findIndex((message) => message.id === messageId);
+    if (messageIndex === -1) {
+      return;
+    }
+
+    const previousUserMessage = activeMessages
+      .slice(0, messageIndex)
+      .reverse()
+      .find((message) => message.role === "user");
+
+    if (previousUserMessage) {
+      void sendMessage(previousUserMessage.content);
+    }
+  }
+
+  async function copyMessage(message: ChatMessage) {
+    const content = message.content.trim();
+    if (!content) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(content);
+      toast.success("已复制消息");
+    } catch (error) {
+      console.error("Failed to copy chat message", error);
+      toast.error("复制失败，可以手动选择文本复制。");
     }
   }
 
@@ -348,21 +369,19 @@ export function useChatWorkspace() {
     activeTraces,
     apiReady,
     createBackendSession,
-    filteredSessions,
-    handleInputKeyDown,
     input,
     isStreaming,
     messagesQuery,
     modelsQuery,
+    copyMessage,
     retryLastMessage,
+    retryMessage,
     selectedModel,
+    selectSession,
     sendMessage,
-    sessionFilter,
     sessionsQuery,
-    setActiveSessionId,
     setInput,
     setSelectedModel,
-    setSessionFilter,
     stopStreaming,
   };
 }

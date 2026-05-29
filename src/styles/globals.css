@@ -41,6 +41,8 @@
   --hermes-radius-xl: 12px;
   --hermes-shadow-popover: 0 0 15px 0 hsl(0 0% 0% / 0.03), 0 2px 30px 0 hsl(0 0% 0% / 0.08);
   --hermes-shadow-panel: 0 12px 32px hsl(0 0% 0% / 0.055);
+  --hermes-motion-duration: 160ms;
+  --hermes-motion-ease: cubic-bezier(0.2, 0, 0, 1);
   --background: 0 0% 93.5%;
   --foreground: 0 0% 8%;
   --card: 0 0% 100%;
@@ -62,6 +64,44 @@
   --ring: 0 0% 28%;
   --sidebar: 0 0% 93.5%;
   --radius: 8px;
+}
+
+html[data-hermes-accent="blue"] {
+  --primary: 217 91% 55%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 217 91% 60%;
+}
+
+html[data-hermes-accent="green"] {
+  --primary: 160 84% 34%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 160 84% 38%;
+}
+
+html[data-hermes-accent="rose"] {
+  --primary: 350 77% 52%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 350 77% 58%;
+}
+
+html[data-hermes-animation="agile"] {
+  --hermes-motion-duration: 120ms;
+  --hermes-motion-ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+html[data-hermes-animation="elegant"] {
+  --hermes-motion-duration: 240ms;
+  --hermes-motion-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  scroll-behavior: smooth;
+}
+
+html[data-hermes-animation="disabled"] *,
+html[data-hermes-animation="disabled"] *::before,
+html[data-hermes-animation="disabled"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  scroll-behavior: auto !important;
+  transition-duration: 0.001ms !important;
 }
 
 .dark {

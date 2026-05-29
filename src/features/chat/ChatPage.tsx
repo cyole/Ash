@@ -29,7 +29,13 @@ export function ChatPage() {
             onToggleTrace={() => setTraceOpen((current) => !current)}
           />
           <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
-            <ChatMessageList loading={chat.messagesQuery.isLoading} messages={chat.activeMessages} />
+            <ChatMessageList
+              error={chat.messagesQuery.error}
+              loading={chat.messagesQuery.isLoading}
+              messages={chat.activeMessages}
+              onCopyMessage={(message) => void chat.copyMessage(message)}
+              onRetryMessage={chat.retryMessage}
+            />
           </div>
           <div className="shrink-0 bg-card px-4 pb-3 pt-1.5">
             <ChatComposer
@@ -43,7 +49,6 @@ export function ChatPage() {
               modelsLoading={chat.modelsQuery.isLoading}
               selectedModel={chat.selectedModel}
               onInputChange={chat.setInput}
-              onKeyDown={chat.handleInputKeyDown}
               onRetry={chat.retryLastMessage}
               onSelectedModelChange={chat.setSelectedModel}
               onSend={() => void chat.sendMessage()}

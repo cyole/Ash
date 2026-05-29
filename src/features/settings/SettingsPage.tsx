@@ -1,24 +1,61 @@
+import type { ReactNode } from "react";
+import { useMemo, useState } from "react";
+import { Link } from "react-router";
+import { highlighterThemes, mermaidThemes } from "@lobehub/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Bug,
+  Ban,
+  Bot,
   CheckCircle2,
   CircleAlert,
+  Code2,
   Cpu,
+  Gauge,
+  Loader2,
+  Monitor,
+  MonitorCog,
+  Moon,
+  MousePointer2,
+  Palette,
   Play,
   RefreshCcw,
+  ServerCog,
+  ShieldCheck,
+  Sparkles,
   Square,
   Stethoscope,
+  Sun,
+  Type,
+  Waves,
 } from "lucide-react";
-import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { PageHeader } from "@/components/common/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { LobeRuntimeProvider } from "@/features/chat/components/LobeRuntimeProvider";
+import { MarkdownMessage } from "@/features/chat/components/MarkdownMessage";
+import {
+  accentColors,
+  animationModes,
+  chatTransitionModes,
+  contextMenuModes,
+  defaultHermesSettings,
+  themeModes,
+  useHermesSettings,
+} from "@/features/settings/settings-store";
+import type {
+  AccentColor,
+  AnimationMode,
+  ChatTransitionMode,
+  ContextMenuMode,
+  HermesSettingsStorage,
+  ThemeMode,
+} from "@/features/settings/settings-store";
 import { errorMessage } from "@/lib/errors";
 import { hermesQueryKeys } from "@/lib/hermes/queries";
 import {
   checkGateway,
+  getModelConfigStatus,
   getRuntimeStatus,
   isTauriRuntime,
   prepareRuntime,
@@ -27,9 +64,18 @@ import {
   startGateway,
   stopGateway,
 } from "@/lib/tauri";
-import type { RuntimeCommandResult } from "@/types/hermes";
+import { cn } from "@/lib/utils";
+import type { HermesStatus, ModelConfigStatus, RuntimeCommandResult } from "@/types/hermes";
 
 type RuntimeAction = "prepare" | "start" | "stop" | "status" | "doctor" | "portal";
+type SettingsSectionId = "appearance" | "chat" | "model" | "runtime" | "advanced" | "about";
+
+interface SettingsSectionNav {
+  id: SettingsSectionId;
+  label: string;
+  description: string;
+  icon: ReactNode;
+}
 
 const actionLabels: Record<RuntimeAction, string> = {
   prepare: "准备本地引擎",
@@ -38,6 +84,98 @@ const actionLabels: Record<RuntimeAction, string> = {
   status: "检查服务",
   doctor: "运行诊断",
   portal: "连接门户",
+};
+
+const runtimeModeLabels: Record<HermesStatus["mode"], string> = {
+  "browser-preview": "浏览器预览",
+  "local-app": "桌面托管",
+  "local-existing": "本机已有",
+  "local-managed": "应用托管",
+  remote: "远程服务",
+};
+
+const settingsSections: SettingsSectionNav[] = [
+  {
+    id: "appearance",
+    label: "外观",
+    description: "主题、动画和应用调色盘。",
+    icon: <Palette className="h-4 w-4" />,
+  },
+  {
+    id: "chat",
+    label: "聊天外观",
+    description: "消息过渡、字号和 Markdown 主题。",
+    icon: <Bot className="h-4 w-4" />,
+  },
+  {
+    id: "model",
+    label: "服务模型",
+    description: "默认提供商和模型连接状态。",
+    icon: <Sparkles className="h-4 w-4" />,
+  },
+  {
+    id: "runtime",
+    label: "系统工具",
+    description: "托管运行时、网关和诊断。",
+    icon: <ServerCog className="h-4 w-4" />,
+  },
+  {
+    id: "advanced",
+    label: "数据存储",
+    description: "路径、日志和开发者信息。",
+    icon: <MonitorCog className="h-4 w-4" />,
+  },
+  {
+    id: "about",
+    label: "关于",
+    description: "客户端能力和开源组件。",
+    icon: <ShieldCheck className="h-4 w-4" />,
+  },
+];
+
+const themeOptions: Array<{
+  icon: ReactNode;
+  label: string;
+  value: ThemeMode;
+}> = [
+  { icon: <Sun className="h-3.5 w-3.5" />, label: "浅色", value: "light" },
+  { icon: <Moon className="h-3.5 w-3.5" />, label: "深色", value: "dark" },
+  { icon: <Monitor className="h-3.5 w-3.5" />, label: "自动", value: "system" },
+];
+
+const animationOptions: Array<{
+  icon: ReactNode;
+  label: string;
+  value: AnimationMode;
+}> = [
+  { icon: <Ban className="h-3.5 w-3.5" />, label: "关闭", value: "disabled" },
+  { icon: <Gauge className="h-3.5 w-3.5" />, label: "敏捷", value: "agile" },
+  { icon: <Waves className="h-3.5 w-3.5" />, label: "优雅", value: "elegant" },
+];
+
+const contextMenuOptions: Array<{
+  icon: ReactNode;
+  label: string;
+  value: ContextMenuMode;
+}> = [
+  { icon: <Ban className="h-3.5 w-3.5" />, label: "不使用", value: "disabled" },
+  { icon: <MousePointer2 className="h-3.5 w-3.5" />, label: "默认", value: "default" },
+];
+
+const chatTransitionOptions: Array<{
+  label: string;
+  value: ChatTransitionMode;
+}> = [
+  { label: "关闭", value: "none" },
+  { label: "淡入", value: "fadeIn" },
+  { label: "平滑", value: "smooth" },
+];
+
+const accentMeta: Record<AccentColor, { color: string; label: string }> = {
+  neutral: { color: "hsl(0 0% 12%)", label: "中性" },
+  blue: { color: "hsl(217 91% 55%)", label: "蓝色" },
+  green: { color: "hsl(160 84% 34%)", label: "绿色" },
+  rose: { color: "hsl(350 77% 52%)", label: "玫红" },
 };
 
 function isDeveloperToolsEnabled() {
@@ -55,6 +193,8 @@ function isDeveloperToolsEnabled() {
 
 export function SettingsPage() {
   const queryClient = useQueryClient();
+  const { resetSettings, storage } = useHermesSettings();
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>("appearance");
   const [lastResult, setLastResult] = useState<RuntimeCommandResult | null>(null);
   const [lastAction, setLastAction] = useState<RuntimeAction | null>(null);
   const tauriRuntime = useMemo(() => isTauriRuntime(), []);
@@ -64,6 +204,11 @@ export function SettingsPage() {
     queryKey: hermesQueryKeys.runtimeStatus,
     queryFn: getRuntimeStatus,
     refetchInterval: 15_000,
+  });
+
+  const modelStatus = useQuery({
+    queryKey: hermesQueryKeys.modelConfigStatus,
+    queryFn: getModelConfigStatus,
   });
 
   const runAction = useMutation({
@@ -107,186 +252,870 @@ export function SettingsPage() {
   });
 
   const runtime = status.data;
+  const activeSectionConfig = settingsSections.find((section) => section.id === activeSection) ?? settingsSections[0]!;
   const busy = runAction.isPending;
   const ready = Boolean(runtime?.installed);
+  const refreshing = status.isFetching || modelStatus.isFetching;
+
+  function refresh() {
+    void status.refetch();
+    void modelStatus.refetch();
+  }
 
   return (
-    <div>
-      <PageHeader
-        eyebrow="系统"
-        title="设置"
-        description="Hermes 会随应用启动，并在应用退出前自动停止。"
-        actions={
-          <Button variant="outline" onClick={() => status.refetch()} disabled={status.isFetching}>
-            <RefreshCcw className="h-4 w-4" />
-            刷新
-          </Button>
-        }
-      />
+    <div className="grid h-full min-h-0 grid-cols-[188px_minmax(0,1fr)] bg-background">
+      <aside className="flex min-h-0 flex-col border-r border-border/70 bg-sidebar/80 p-2.5">
+        <div className="px-2 pb-2 pt-1.5 text-[11px] font-medium text-muted-foreground">偏好设置</div>
+        <div className="space-y-0.5">
+          {settingsSections.map((section) => (
+            <button
+              key={section.id}
+              type="button"
+              onClick={() => setActiveSection(section.id)}
+              title={section.description}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors",
+                activeSection === section.id
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-accent/70 hover:text-foreground",
+              )}
+            >
+              <span className="shrink-0">{section.icon}</span>
+              <span className="min-w-0 truncate text-[13px] font-medium">{section.label}</span>
+            </button>
+          ))}
+        </div>
 
-      <div className="space-y-4 p-6">
-        <section className="rounded-lg border border-border">
-          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <div className="mt-auto rounded-lg border border-border/70 bg-card/75 p-2.5 shadow-sm">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="text-[11px] font-medium text-muted-foreground">本地服务</div>
+            <button
+              type="button"
+              onClick={refresh}
+              disabled={refreshing}
+              className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+              aria-label="刷新本地服务状态"
+            >
+              {refreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCcw className="h-3.5 w-3.5" />}
+            </button>
+          </div>
+          <RuntimeBadge
+            installed={runtime?.installed}
+            running={runtime?.running}
+            gatewayRunning={runtime?.gatewayRunning}
+          />
+        </div>
+      </aside>
+
+      <main className="min-h-0 overflow-y-auto bg-card">
+        <div className="mx-auto max-w-[980px] px-6 py-6">
+          <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm font-medium">本地引擎</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Hermes 运行在由桌面应用托管的独立运行时中。
-              </p>
+              <h1 className="text-xl font-semibold tracking-normal">{activeSectionConfig.label}</h1>
+              <p className="mt-1 text-sm text-muted-foreground">{activeSectionConfig.description}</p>
             </div>
+            {activeSection === "appearance" || activeSection === "chat" ? (
+              <Button variant="outline" size="sm" onClick={resetSettings}>
+                恢复默认
+              </Button>
+            ) : null}
+          </div>
+
+          <Separator className="my-5" />
+
+          <div className="space-y-6">
+            {activeSection === "appearance" ? <AppearanceSection /> : null}
+            {activeSection === "chat" ? <ChatAppearanceSection /> : null}
+            {activeSection === "model" ? (
+              <ModelSection modelStatus={modelStatus.data} loading={modelStatus.isLoading} error={modelStatus.error} />
+            ) : null}
+            {activeSection === "runtime" ? (
+              <RuntimeSection
+                busy={busy}
+                lastAction={lastAction}
+                lastResult={lastResult}
+                ready={ready}
+                runtime={runtime}
+                runtimeError={status.error}
+                runtimeLoading={status.isLoading}
+                tauriRuntime={tauriRuntime}
+                onRunAction={(action) => runAction.mutate(action)}
+              />
+            ) : null}
+            {activeSection === "advanced" ? (
+              <AdvancedSection
+                developerToolsEnabled={developerToolsEnabled}
+                lastAction={lastAction}
+                lastResult={lastResult}
+                runtime={runtime}
+                busy={busy}
+              />
+            ) : null}
+            {activeSection === "about" ? (
+              <AboutSection runtime={runtime} modelStatus={modelStatus.data} storage={storage} />
+            ) : null}
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function AppearanceSection() {
+  const { settings, updateSettings } = useHermesSettings();
+
+  return (
+    <div className="space-y-8">
+      <SettingsGroup title="通用设置">
+        <SettingsRow label="主题" action={<ThemeSelector value={settings.themeMode} onChange={(themeMode) => updateSettings({ themeMode })} />} />
+        <SettingsRow
+          label="响应动画"
+          description="控制应用内过渡和聊天流式输出的动画速度。"
+          action={
+            <SegmentedControl
+              options={animationOptions}
+              value={settings.animationMode}
+              onChange={(animationMode) => updateSettings({ animationMode })}
+            />
+          }
+        />
+        <SettingsRow
+          label="右键菜单方案"
+          description="不使用时会拦截浏览器/WebView 默认右键菜单。"
+          action={
+            <SegmentedControl
+              options={contextMenuOptions}
+              value={settings.contextMenuMode}
+              onChange={(contextMenuMode) => updateSettings({ contextMenuMode })}
+            />
+          }
+        />
+      </SettingsGroup>
+
+      <SettingsGroup title="应用外观">
+        <SettingsRow
+          label="调色盘"
+          action={
+            <div className="flex flex-col items-end gap-4">
+              <AccentSelector
+                value={settings.accentColor}
+                onChange={(accentColor) => updateSettings({ accentColor })}
+              />
+              <AppPalettePreview />
+            </div>
+          }
+        />
+      </SettingsGroup>
+    </div>
+  );
+}
+
+function ChatAppearanceSection() {
+  const { settings, updateSettings } = useHermesSettings();
+
+  return (
+    <LobeRuntimeProvider>
+      <div className="space-y-6">
+        <SettingsGroup title="聊天显示">
+          <SettingsRow
+            label="消息过渡动画"
+            description="控制新消息出现方式；关闭后消息列表不再执行动效。"
+            action={
+              <SegmentedControl
+                options={chatTransitionOptions}
+                value={settings.chatTransitionMode}
+                onChange={(chatTransitionMode) => updateSettings({ chatTransitionMode })}
+              />
+            }
+          >
+            <TransitionPreview mode={settings.chatTransitionMode} />
+          </SettingsRow>
+          <SettingsRow
+            label="流式输出自动滚动"
+            description="关闭后，模型持续输出时不会强制把视图拉到最新内容。"
+            action={
+              <SwitchControl
+                checked={settings.autoScrollOnStreaming}
+                onChange={(autoScrollOnStreaming) => updateSettings({ autoScrollOnStreaming })}
+              />
+            }
+          />
+          <SettingsRow
+            label="消息字号"
+            description="影响聊天区所有 Lobe Markdown 消息。"
+            action={
+              <RangeControl
+                value={settings.chatFontSize}
+                min={12}
+                max={18}
+                onChange={(chatFontSize) => updateSettings({ chatFontSize })}
+              />
+            }
+          >
+            <ChatPreviewPanel />
+          </SettingsRow>
+        </SettingsGroup>
+
+        <SettingsGroup title="Markdown 渲染">
+          <SettingsRow
+            label="代码块主题"
+            action={
+              <SelectControl
+                value={settings.highlighterTheme}
+                options={highlighterThemes.map((item) => ({ label: item.displayName, value: item.id }))}
+                onChange={(highlighterTheme) => updateSettings({ highlighterTheme })}
+              />
+            }
+          >
+            <CodePreviewPanel />
+          </SettingsRow>
+          <SettingsRow
+            label="Mermaid 主题"
+            action={
+              <SelectControl
+                value={settings.mermaidTheme}
+                options={mermaidThemes.map((item) => ({ label: item.displayName, value: item.id }))}
+                onChange={(mermaidTheme) => updateSettings({ mermaidTheme })}
+              />
+            }
+          >
+            <MermaidPreviewPanel />
+          </SettingsRow>
+        </SettingsGroup>
+      </div>
+    </LobeRuntimeProvider>
+  );
+}
+
+function ModelSection({
+  error,
+  loading,
+  modelStatus,
+}: {
+  error: unknown;
+  loading: boolean;
+  modelStatus?: ModelConfigStatus;
+}) {
+  return (
+    <div className="space-y-6">
+      <SettingsGroup title="默认模型">
+        <SettingsRow
+          label="配置状态"
+          description="保存后本地服务会读取 app-managed config 中的 provider 配置。"
+          action={<ModelStatusBadge configured={modelStatus?.configured} loading={loading} />}
+        />
+        <SettingsRow
+          label="提供商"
+          description={modelStatus?.providerKey ?? "尚未写入 provider key。"}
+          action={<ValuePill value={modelStatus?.name ?? "未配置"} />}
+        />
+        <SettingsRow
+          label="服务地址"
+          description={modelStatus?.baseUrl ?? "配置 OpenAI 兼容服务地址后会显示在这里。"}
+          action={<ValuePill value={modelStatus?.baseUrl ?? "未配置"} mono />}
+        />
+        <SettingsRow
+          label="默认模型"
+          description={modelStatus?.model ?? "还没有默认模型。"}
+          action={<ValuePill value={modelStatus?.model ?? "未配置"} mono />}
+        />
+        <SettingsRow
+          label="Provider Key"
+          description="密钥只保存在本地运行时配置中，设置页不会显示明文。"
+          action={
+            <StatusPill tone={modelStatus?.hasApiKey ? "success" : "warning"}>
+              {modelStatus?.hasApiKey ? "已保存" : "需要设置"}
+            </StatusPill>
+          }
+        />
+        {error ? (
+          <SettingsRow
+            label="读取失败"
+            description={errorMessage(error)}
+            action={<StatusPill tone="danger">需要处理</StatusPill>}
+          />
+        ) : null}
+      </SettingsGroup>
+
+      <SettingsGroup title="模型管理">
+        <div className="flex flex-wrap gap-2 px-4 py-4">
+          <Button asChild>
+            <Link to="/models">
+              <Sparkles className="h-4 w-4" />
+              打开模型设置
+            </Link>
+          </Button>
+        </div>
+      </SettingsGroup>
+    </div>
+  );
+}
+
+function RuntimeSection({
+  busy,
+  lastAction,
+  lastResult,
+  ready,
+  runtime,
+  runtimeError,
+  runtimeLoading,
+  tauriRuntime,
+  onRunAction,
+}: {
+  busy: boolean;
+  lastAction: RuntimeAction | null;
+  lastResult: RuntimeCommandResult | null;
+  ready: boolean;
+  runtime?: HermesStatus;
+  runtimeError: unknown;
+  runtimeLoading: boolean;
+  tauriRuntime: boolean;
+  onRunAction: (action: RuntimeAction) => void;
+}) {
+  return (
+    <div className="space-y-6">
+      <SettingsGroup title="本地服务">
+        <SettingsRow
+          label="状态"
+          description={runtimeLoading ? "正在检查本地服务。" : runtimeSummary(runtime)}
+          action={
             <RuntimeBadge
               installed={runtime?.installed}
               running={runtime?.running}
               gatewayRunning={runtime?.gatewayRunning}
             />
-          </div>
-
-          <div className="grid gap-0 divide-y divide-border">
-            <RuntimeRow
-              label="状态"
-              value={
-                runtime?.running
-                  ? "已就绪并运行中"
-                  : runtime?.gatewayRunning
-                    ? "网关运行中；本地 API 已暂停"
-                    : ready
-                      ? "已准备，可启动"
-                      : "需要准备"
-              }
-            />
-            <RuntimeRow
-              label="内置运行时"
-              value={
-                runtime?.bundledRuntimeFound
-                  ? "可用"
-                  : "缺少当前平台运行时"
-              }
-            />
-            <RuntimeRow
-              label="本地 API 认证"
-              value={runtime?.apiKeyConfigured ? "已配置" : "需要设置"}
-            />
-            <RuntimeRow
-              label="已有设置"
-              value={runtime?.legacyConfigFound ? "已找到，可导入" : "未找到已有 Hermes 配置"}
-            />
-            <RuntimeRow label="版本" value={runtime?.version ?? "未知"} />
-          </div>
-        </section>
-
-        {developerToolsEnabled ? (
-          <details className="rounded-lg border border-border">
-            <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3">
-              <span className="flex items-center gap-2 text-sm font-medium">
-                <Bug className="h-4 w-4" />
-                调试菜单
-              </span>
-              <Badge className="border-border bg-secondary text-muted-foreground">开发者</Badge>
-            </summary>
-
-            <div className="border-t border-border p-4">
-              <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">手动控制</div>
-              <div className="flex flex-wrap gap-2">
-                <Button onClick={() => runAction.mutate("prepare")} disabled={!tauriRuntime || busy}>
-                  <Cpu className="h-4 w-4" />
-                  准备本地引擎
-                </Button>
-                <Button
-                  onClick={() => runAction.mutate(runtime?.running ? "stop" : "start")}
-                  disabled={!tauriRuntime || busy || !ready}
-                  variant="outline"
-                >
-                  {runtime?.running ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                  {runtime?.running ? "停止" : "启动"}
-                </Button>
-                <Button
-                  onClick={() => runAction.mutate("status")}
-                  disabled={!tauriRuntime || busy || !ready}
-                  variant="outline"
-                >
-                  <RefreshCcw className="h-4 w-4" />
-                  检查服务
-                </Button>
-                <Button
-                  onClick={() => runAction.mutate("doctor")}
-                  disabled={!tauriRuntime || busy || !ready}
-                  variant="outline"
-                >
-                  <Stethoscope className="h-4 w-4" />
-                  诊断
-                </Button>
-                <Button
-                  onClick={() => runAction.mutate("portal")}
-                  disabled={!tauriRuntime || busy || !ready}
-                  variant="outline"
-                >
-                  连接门户
-                </Button>
-              </div>
-
-              {!tauriRuntime ? (
-                <p className="mt-3 text-sm text-muted-foreground">
-                  本地引擎操作仅在 Tauri 桌面应用中可用。浏览器预览只显示界面。
-                </p>
-              ) : null}
-            </div>
-
-            <div className="border-t border-border">
-              <div className="px-4 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                技术详情
-              </div>
-              <div className="grid gap-0 divide-y divide-border">
-                <RuntimeRow label="运行时归档" value={runtime?.bundledRuntimeArchive ?? "检查中"} mono />
-                <RuntimeRow label="运行时根目录" value={runtime?.managedRoot ?? "检查中"} mono />
-                <RuntimeRow label="引擎主目录" value={runtime?.hermesHome ?? "检查中"} mono />
-                <RuntimeRow label="配置文件" value={runtime?.configPath ?? "检查中"} mono />
-                <RuntimeRow label="Hermes CLI" value={runtime?.path ?? "未找到"} mono />
-                <RuntimeRow label="本地 API" value={runtime?.apiUrl ?? "http://127.0.0.1:8642"} mono />
-              </div>
-            </div>
-
-            <div className="border-t border-border p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">活动日志</div>
-                {lastAction ? (
-                  <div className="flex items-center gap-2">
-                    <Badge>{actionLabels[lastAction]}</Badge>
-                    {lastResult ? (
-                      <span className="text-xs text-muted-foreground">
-                        {lastResult.success ? "成功" : "失败"}
-                        {lastResult.code !== null ? ` (${lastResult.code})` : ""}
-                      </span>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-
-              {busy ? (
-                <div className="rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
-                  正在运行{lastAction ? actionLabels[lastAction] : "命令"}...
-                </div>
-              ) : (
-                <CommandOutput result={lastResult} gatewayStatus={runtime?.gatewayStatus ?? null} />
-              )}
-            </div>
-          </details>
+          }
+        />
+        <SettingsRow
+          label="运行模式"
+          description="桌面应用会在需要时准备托管运行时，并在退出前停止服务。"
+          action={<ValuePill value={runtime ? runtimeModeLabels[runtime.mode] : "检查中"} />}
+        />
+        <SettingsRow
+          label="内置运行时"
+          description={runtime?.bundledRuntimeArchive ?? "正在检查运行时归档。"}
+          action={
+            <StatusPill tone={runtime?.bundledRuntimeFound ? "success" : "warning"}>
+              {runtime?.bundledRuntimeFound ? "可用" : "未找到"}
+            </StatusPill>
+          }
+        />
+        <SettingsRow
+          label="本地 API 认证"
+          description="聊天请求会带上桌面运行时提供的本地 API Key。"
+          action={
+            <StatusPill tone={runtime?.apiKeyConfigured ? "success" : "warning"}>
+              {runtime?.apiKeyConfigured ? "已配置" : "需要设置"}
+            </StatusPill>
+          }
+        />
+        {runtimeError ? (
+          <SettingsRow
+            label="检查失败"
+            description={errorMessage(runtimeError)}
+            action={<StatusPill tone="danger">需要处理</StatusPill>}
+          />
         ) : null}
+      </SettingsGroup>
+
+      <SettingsGroup title="控制">
+        <div className="flex flex-wrap gap-2 px-4 py-4">
+          <Button onClick={() => onRunAction("prepare")} disabled={!tauriRuntime || busy}>
+            <Cpu className="h-4 w-4" />
+            准备本地引擎
+          </Button>
+          <Button
+            onClick={() => onRunAction(runtime?.running ? "stop" : "start")}
+            disabled={!tauriRuntime || busy || !ready}
+            variant="outline"
+          >
+            {runtime?.running ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+            {runtime?.running ? "停止服务" : "启动服务"}
+          </Button>
+          <Button
+            onClick={() => onRunAction("status")}
+            disabled={!tauriRuntime || busy || !ready}
+            variant="outline"
+          >
+            <RefreshCcw className="h-4 w-4" />
+            检查服务
+          </Button>
+          <Button
+            onClick={() => onRunAction("doctor")}
+            disabled={!tauriRuntime || busy || !ready}
+            variant="outline"
+          >
+            <Stethoscope className="h-4 w-4" />
+            诊断
+          </Button>
+          <Button
+            onClick={() => onRunAction("portal")}
+            disabled={!tauriRuntime || busy || !ready}
+            variant="outline"
+          >
+            连接门户
+          </Button>
+        </div>
+        {!tauriRuntime ? (
+          <p className="border-t border-border/70 px-4 py-3 text-sm text-muted-foreground">
+            本地服务操作仅在 Tauri 桌面应用中可用。浏览器预览只显示界面。
+          </p>
+        ) : null}
+      </SettingsGroup>
+
+      <SettingsGroup title="最近一次操作">
+        <div className="p-4">
+          <CommandHeader lastAction={lastAction} lastResult={lastResult} />
+          {busy ? (
+            <div className="mt-3 rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
+              正在运行{lastAction ? actionLabels[lastAction] : "命令"}...
+            </div>
+          ) : (
+            <div className="mt-3">
+              <CommandOutput result={lastResult} gatewayStatus={runtime?.gatewayStatus ?? null} />
+            </div>
+          )}
+        </div>
+      </SettingsGroup>
+    </div>
+  );
+}
+
+function AdvancedSection({
+  busy,
+  developerToolsEnabled,
+  lastAction,
+  lastResult,
+  runtime,
+}: {
+  busy: boolean;
+  developerToolsEnabled: boolean;
+  lastAction: RuntimeAction | null;
+  lastResult: RuntimeCommandResult | null;
+  runtime?: HermesStatus;
+}) {
+  return (
+    <div className="space-y-6">
+      <SettingsGroup title="技术详情">
+        <SettingsRow label="运行时根目录" description={runtime?.managedRoot ?? "检查中"} action={<ValuePill value="managedRoot" mono />} />
+        <SettingsRow label="Hermes 主目录" description={runtime?.hermesHome ?? "检查中"} action={<ValuePill value="hermesHome" mono />} />
+        <SettingsRow label="配置文件" description={runtime?.configPath ?? "检查中"} action={<ValuePill value="config" mono />} />
+        <SettingsRow label="Hermes CLI" description={runtime?.path ?? "未找到"} action={<ValuePill value="cli" mono />} />
+        <SettingsRow label="本地 API" description={runtime?.apiUrl ?? "http://127.0.0.1:8642"} action={<ValuePill value="api" mono />} />
+      </SettingsGroup>
+
+      <SettingsGroup title="开发者工具">
+        <SettingsRow
+          label="调试菜单"
+          description="用于查看运行时命令输出、网关状态和本地路径。"
+          action={
+            <StatusPill tone={developerToolsEnabled ? "success" : "neutral"}>
+              {developerToolsEnabled ? "已启用" : "未启用"}
+            </StatusPill>
+          }
+        />
+        <div className="border-t border-border/70 p-4">
+          <CommandHeader lastAction={lastAction} lastResult={lastResult} />
+          {busy ? (
+            <div className="mt-3 rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
+              正在运行{lastAction ? actionLabels[lastAction] : "命令"}...
+            </div>
+          ) : (
+            <div className="mt-3">
+              <CommandOutput result={lastResult} gatewayStatus={runtime?.gatewayStatus ?? null} />
+            </div>
+          )}
+        </div>
+      </SettingsGroup>
+    </div>
+  );
+}
+
+function AboutSection({
+  modelStatus,
+  runtime,
+  storage,
+}: {
+  modelStatus?: ModelConfigStatus;
+  runtime?: HermesStatus;
+  storage: HermesSettingsStorage;
+}) {
+  return (
+    <div className="space-y-6">
+      <SettingsGroup title="Hermes Desktop">
+        <SettingsRow
+          label="聊天输入"
+          description="聊天页使用 @lobehub/editor/react 的 ChatInput 与 Lexical Editor。"
+          action={<StatusPill tone="success">@lobehub/editor</StatusPill>}
+        />
+        <SettingsRow
+          label="Markdown"
+          description="消息渲染使用 @lobehub/ui Markdown，设置页中的主题会直接影响聊天消息。"
+          action={<StatusPill tone="success">@lobehub/ui</StatusPill>}
+        />
+        <SettingsRow
+          label="本地服务"
+          description={runtime ? runtimeSummary(runtime) : "正在检查本地服务。"}
+          action={<ValuePill value={runtime?.version ?? "未知版本"} mono />}
+        />
+        <SettingsRow
+          label="默认模型"
+          description={modelStatus?.configured ? "已连接 OpenAI 兼容提供商。" : "还没有保存默认模型配置。"}
+          action={<ValuePill value={modelStatus?.model ?? "未配置"} mono />}
+        />
+        <SettingsRow
+          label="偏好设置"
+          description={
+            storage.error
+              ? `桌面设置文件暂不可用：${storage.error}`
+              : storage.kind === "desktop"
+                ? "保存在 Tauri 应用数据目录，不依赖 WebView localStorage。"
+                : "当前是浏览器预览，才使用 localStorage 兜底。"
+          }
+          action={<ValuePill value={storage.loading ? "读取中" : storage.path} mono />}
+        />
+      </SettingsGroup>
+    </div>
+  );
+}
+
+function SettingsGroup({ children, title }: { children: ReactNode; title: string }) {
+  return (
+    <section className="overflow-hidden rounded-xl border border-border/80 bg-background/80 shadow-sm">
+      <div className="border-b border-border/70 bg-muted/25 px-3.5 py-2.5">
+        <h2 className="text-sm font-semibold tracking-normal">{title}</h2>
+      </div>
+      <div className="divide-y divide-border/70">{children}</div>
+    </section>
+  );
+}
+
+function SettingsRow({
+  action,
+  children,
+  description,
+  label,
+}: {
+  action?: ReactNode;
+  children?: ReactNode;
+  description?: ReactNode;
+  label: string;
+}) {
+  return (
+    <div className="grid gap-3 px-3.5 py-3 md:grid-cols-[minmax(0,1fr)_minmax(220px,auto)] md:items-start">
+      <div className="min-w-0">
+        <div className="text-[13px] font-medium">{label}</div>
+        {description ? (
+          <div className="mt-1 min-w-0 break-words text-xs leading-5 text-muted-foreground">{description}</div>
+        ) : null}
+        {children ? <div className="mt-3 max-w-[560px]">{children}</div> : null}
+      </div>
+      {action ? <div className="flex min-w-0 justify-start md:justify-end">{action}</div> : null}
+    </div>
+  );
+}
+
+function ThemeSelector({
+  onChange,
+  value,
+}: {
+  onChange: (value: ThemeMode) => void;
+  value: ThemeMode;
+}) {
+  return (
+    <div className="flex flex-wrap justify-end gap-2">
+      {themeOptions.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          onClick={() => onChange(option.value)}
+          className={cn(
+            "group flex flex-col items-center gap-1.5 rounded-lg border border-border/70 bg-card p-1.5 text-xs transition-all",
+            value === option.value && "border-primary shadow-[0_0_0_1px_hsl(var(--primary))]",
+          )}
+        >
+          <ThemePreview value={option.value} />
+          <span className={cn("flex items-center gap-1.5 text-muted-foreground", value === option.value && "text-foreground")}>
+            {option.icon}
+            {option.label}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ThemePreview({ value }: { value: ThemeMode }) {
+  const light = (
+    <div className="h-full flex-1 bg-white">
+      <div className="h-3 bg-blue-500" />
+      <div className="space-y-1 p-2">
+        <div className="h-2 w-8 rounded-sm bg-sky-100" />
+        <div className="h-2 w-14 rounded-sm bg-zinc-200" />
+        <div className="h-2 w-10 rounded-sm bg-zinc-200" />
+      </div>
+    </div>
+  );
+  const dark = (
+    <div className="h-full flex-1 bg-black">
+      <div className="h-3 bg-[#071b55]" />
+      <div className="space-y-1 p-2">
+        <div className="h-2 w-8 rounded-sm bg-slate-700" />
+        <div className="h-2 w-14 rounded-sm bg-zinc-800" />
+        <div className="h-2 w-10 rounded-sm bg-zinc-800" />
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex h-[48px] w-[96px] overflow-hidden rounded-md border border-border bg-muted">
+      {value === "light" ? light : null}
+      {value === "dark" ? dark : null}
+      {value === "system" ? (
+        <>
+          {light}
+          {dark}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function SegmentedControl<T extends string>({
+  onChange,
+  options,
+  value,
+}: {
+  onChange: (value: T) => void;
+  options: Array<{ icon?: ReactNode; label: string; value: T }>;
+  value: T;
+}) {
+  return (
+    <div className="inline-flex rounded-lg bg-muted p-1">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          onClick={() => onChange(option.value)}
+          className={cn(
+            "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs text-muted-foreground transition-colors",
+            value === option.value && "bg-card text-foreground shadow-sm",
+          )}
+        >
+          {option.icon}
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function AccentSelector({
+  onChange,
+  value,
+}: {
+  onChange: (value: AccentColor) => void;
+  value: AccentColor;
+}) {
+  return (
+    <div className="flex flex-wrap justify-end gap-2">
+      {accentColors.map((accent) => (
+        <button
+          key={accent}
+          type="button"
+          onClick={() => onChange(accent)}
+          className={cn(
+            "flex h-8 items-center gap-2 rounded-md border border-border bg-card px-2 text-xs text-muted-foreground",
+            value === accent && "border-primary text-foreground shadow-[0_0_0_1px_hsl(var(--primary))]",
+          )}
+        >
+          <span className="h-4 w-4 rounded-full" style={{ background: accentMeta[accent].color }} />
+          {accentMeta[accent].label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function AppPalettePreview() {
+  return (
+    <div className="w-[240px] overflow-hidden rounded-lg border border-border/80 bg-card shadow-sm">
+      <div className="grid h-[126px] grid-cols-[48px_1fr]">
+        <div className="space-y-2.5 border-r border-border/70 bg-muted/60 p-2.5">
+          <div className="h-5 w-5 rounded-full border-2 border-primary" />
+          <div className="h-4 w-4 rounded bg-muted-foreground/20" />
+          <div className="h-4 w-4 rounded bg-muted-foreground/20" />
+          <div className="h-4 w-4 rounded bg-muted-foreground/20" />
+        </div>
+        <div className="flex flex-col">
+          <div className="flex h-9 items-center justify-between border-b border-border/70 px-3">
+            <div className="h-3 w-24 rounded bg-muted-foreground/20" />
+            <div className="flex gap-1">
+              <div className="h-3 w-3 rounded bg-muted-foreground/20" />
+              <div className="h-3 w-3 rounded bg-muted-foreground/20" />
+            </div>
+          </div>
+          <div className="flex-1 space-y-2 p-3">
+            <div className="ml-auto h-7 w-24 rounded-md border border-border bg-background" />
+            <div className="h-7 w-32 rounded-md bg-muted" />
+            <div className="ml-auto h-3 w-16 rounded bg-primary" />
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
+function SwitchControl({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        "relative h-7 w-12 rounded-full border border-border transition-colors",
+        checked ? "bg-primary" : "bg-muted",
+      )}
+    >
+      <span
+        className={cn(
+          "absolute top-1 h-5 w-5 rounded-full bg-card shadow-sm transition-transform",
+          checked ? "translate-x-5" : "translate-x-1",
+        )}
+      />
+    </button>
+  );
+}
+
+function RangeControl({
+  max,
+  min,
+  onChange,
+  value,
+}: {
+  max: number;
+  min: number;
+  onChange: (value: number) => void;
+  value: number;
+}) {
+  return (
+    <div className="flex w-[220px] items-center gap-2.5">
+      <span className="text-xs text-muted-foreground">A</span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={1}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="min-w-0 flex-1 accent-primary"
+      />
+      <span className="text-base font-medium">A</span>
+      <span className="w-9 rounded-md border border-border bg-card px-1.5 py-1 text-center text-xs tabular-nums">
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function SelectControl<T extends string>({
+  onChange,
+  options,
+  value,
+}: {
+  onChange: (value: T) => void;
+  options: Array<{ label: string; value: T }>;
+  value: T;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(event) => onChange(event.target.value as T)}
+      className="h-9 w-[240px] rounded-lg border border-border/80 bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+    >
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function TransitionPreview({ mode }: { mode: ChatTransitionMode }) {
+  return (
+    <div className="flex h-[72px] max-w-[380px] items-center gap-3 rounded-lg border border-border bg-card p-3">
+      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+        <Bot className="h-3.5 w-3.5" />
+      </div>
+      <div
+        className={cn(
+          "space-y-2 rounded-lg border border-border bg-background p-3 transition-all",
+          mode === "fadeIn" && "opacity-80",
+          mode === "smooth" && "translate-y-0 shadow-sm",
+        )}
+      >
+        <div className="h-2 w-48 rounded bg-muted-foreground/25" />
+        <div className="h-2 w-32 rounded bg-muted-foreground/20" />
+      </div>
+    </div>
+  );
+}
+
+function ChatPreviewPanel() {
+  return (
+    <div className="rounded-lg border border-border bg-card p-3">
+      <MarkdownMessage>
+        {["这是一段聊天字号预览，包含 **加粗**、列表和代码。", "", "- 扫描当前上下文", "- 输出可执行的下一步"].join("\n")}
+      </MarkdownMessage>
+    </div>
+  );
+}
+
+function CodePreviewPanel() {
+  const sample = [
+    "```ts",
+    "const task = await hermes.chat(\"整理今天的本地任务\");",
+    "console.log(task.summary);",
+    "```",
+  ].join("\n");
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-3">
+      <MarkdownMessage>{sample}</MarkdownMessage>
+    </div>
+  );
+}
+
+function MermaidPreviewPanel() {
+  const sample = ["```mermaid", "flowchart LR", "  A[输入] --> B[计划]", "  B --> C[执行]", "  C --> D[结果]", "```"].join("\n");
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-3">
+      <MarkdownMessage>{sample}</MarkdownMessage>
+    </div>
+  );
+}
+
 function RuntimeBadge({
+  gatewayRunning,
   installed,
   running,
-  gatewayRunning,
 }: {
+  gatewayRunning?: boolean;
   installed?: boolean;
   running?: boolean;
-  gatewayRunning?: boolean;
 }) {
   if (running) {
     return (
-      <Badge className="border-green-200 bg-green-50 text-green-700">
+      <Badge className="border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
         <CheckCircle2 className="mr-1 h-3 w-3" />
         就绪
       </Badge>
@@ -295,7 +1124,7 @@ function RuntimeBadge({
 
   if (installed) {
     return (
-      <Badge className="border-amber-200 bg-amber-50 text-amber-700">
+      <Badge className="border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300">
         <CircleAlert className="mr-1 h-3 w-3" />
         {gatewayRunning ? "API 已暂停" : "已停止"}
       </Badge>
@@ -310,21 +1139,85 @@ function RuntimeBadge({
   );
 }
 
-function RuntimeRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+function ModelStatusBadge({ configured, loading }: { configured?: boolean; loading: boolean }) {
+  if (loading) {
+    return (
+      <Badge className="border-border bg-secondary text-muted-foreground">
+        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+        检查中
+      </Badge>
+    );
+  }
+
   return (
-    <div className="grid grid-cols-[160px_1fr] gap-4 px-4 py-3 text-sm">
-      <div className="text-muted-foreground">{label}</div>
-      <div className={mono ? "min-w-0 truncate font-mono text-xs" : "min-w-0 truncate"}>{value}</div>
+    <StatusPill tone={configured ? "success" : "warning"}>
+      {configured ? "已配置" : "需要设置"}
+    </StatusPill>
+  );
+}
+
+function StatusPill({
+  children,
+  tone,
+}: {
+  children: ReactNode;
+  tone: "danger" | "neutral" | "success" | "warning";
+}) {
+  const classes = {
+    danger: "border-destructive/20 bg-destructive/10 text-destructive",
+    neutral: "border-border bg-secondary text-muted-foreground",
+    success: "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+    warning: "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  };
+
+  return <Badge className={classes[tone]}>{children}</Badge>;
+}
+
+function ValuePill({ mono = false, value }: { mono?: boolean; value: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex max-w-[280px] items-center justify-end truncate rounded-md border border-border/70 bg-background px-2 py-1 text-xs text-muted-foreground",
+        mono && "font-mono",
+      )}
+      title={value}
+    >
+      {value}
+    </span>
+  );
+}
+
+function CommandHeader({
+  lastAction,
+  lastResult,
+}: {
+  lastAction: RuntimeAction | null;
+  lastResult: RuntimeCommandResult | null;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">活动日志</div>
+      {lastAction ? (
+        <div className="flex items-center gap-2">
+          <Badge>{actionLabels[lastAction]}</Badge>
+          {lastResult ? (
+            <span className="text-xs text-muted-foreground">
+              {lastResult.success ? "成功" : "失败"}
+              {lastResult.code !== null ? ` (${lastResult.code})` : ""}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
 
 function CommandOutput({
-  result,
   gatewayStatus,
+  result,
 }: {
-  result: RuntimeCommandResult | null;
   gatewayStatus: string | null;
+  result: RuntimeCommandResult | null;
 }) {
   if (!result && !gatewayStatus) {
     return (
@@ -347,4 +1240,24 @@ function CommandOutput({
       ) : null}
     </div>
   );
+}
+
+function runtimeSummary(runtime?: HermesStatus) {
+  if (!runtime) {
+    return "正在检查本地服务。";
+  }
+
+  if (runtime.running) {
+    return "本地服务已就绪并运行中。";
+  }
+
+  if (runtime.gatewayRunning) {
+    return "网关运行中，本地 API 暂未完全就绪。";
+  }
+
+  if (runtime.installed) {
+    return "运行时已准备，可以启动本地服务。";
+  }
+
+  return "需要先准备本地运行时。";
 }

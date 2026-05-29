@@ -5,7 +5,6 @@ import type { LucideIcon } from "lucide-react";
 import {
   Bot,
   BriefcaseBusiness,
-  ChevronDown,
   Hash,
   FileText,
   HelpCircle,
@@ -21,6 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { Link, NavLink } from "react-router";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { hermesQueryKeys, useHermesApi } from "@/lib/hermes/queries";
 import { sessionTitle, sessionUpdatedAt } from "@/lib/hermes/session-format";
@@ -97,7 +97,6 @@ export function AppSidebar() {
 
       <RecentSection
         loading={sessionsQuery.isLoading}
-        open={recentOpen}
         sessions={visibleRecentSessions}
         onOpenChange={setRecentOpen}
       />
@@ -128,42 +127,34 @@ export function AppSidebar() {
 function RecentSection({
   loading,
   onOpenChange,
-  open,
   sessions,
 }: {
   loading: boolean;
   onOpenChange: (open: boolean) => void;
-  open: boolean;
   sessions: HermesSession[];
 }) {
   return (
     <section className="mt-4">
-      <button
-        type="button"
-        onClick={() => onOpenChange(!open)}
-        className="mb-1 flex h-7 items-center gap-1 rounded-md px-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/15"
-      >
-        最近
-        <ChevronDown className={cn("h-3 w-3 transition-transform", open && "rotate-180")} />
-      </button>
+      <div className="mb-2 px-1 text-[11px] font-medium text-muted-foreground">会话</div>
 
-      <div className="space-y-1">
+      <div className="flex flex-col gap-1">
         {sessions.length > 0 ? (
           sessions.map((session) => <RecentLink key={session.id} id={session.id} title={sessionTitle(session)} />)
         ) : (
           <div className="px-2 py-1.5 text-xs text-muted-foreground">
-            {loading ? "正在加载最近聊天" : "暂无最近聊天"}
+            {loading ? "正在加载会话" : "暂无会话"}
           </div>
         )}
 
-        <button
+        <Button
           type="button"
+          variant="ghost"
           onClick={() => onOpenChange(true)}
-          className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2 text-[13px] transition-colors hover:bg-black/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/15"
+          className="h-9 w-full justify-start gap-2.5 rounded-lg px-2 text-[13px] text-[#696969] hover:bg-black/5 hover:text-foreground"
         >
           <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
           <span>更多</span>
-        </button>
+        </Button>
       </div>
     </section>
   );
@@ -185,15 +176,17 @@ function RecentPopover({
   return (
     <section className="absolute left-full top-0 z-30 h-full w-[320px] border-l border-border bg-[#fbfbfb] px-3.5 py-5 shadow-[12px_0_32px_rgba(0,0,0,0.055)]">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-base font-semibold text-foreground">最近</h2>
-        <button
+        <h2 className="text-base font-semibold text-foreground">会话</h2>
+        <Button
           type="button"
+          variant="ghost"
+          size="icon"
           onClick={onClose}
           aria-label="关闭最近聊天"
-          className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/15"
+          className="h-7 w-7 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
         >
           <X className="h-4 w-4" />
-        </button>
+        </Button>
       </div>
 
       <div className="relative mb-4">
@@ -201,12 +194,12 @@ function RecentPopover({
         <Input
           value={filter}
           onChange={(event) => onFilterChange(event.target.value)}
-          placeholder="搜索最近..."
+          placeholder="搜索会话..."
           className="h-9 rounded-xl bg-background pl-9 text-[13px]"
         />
       </div>
 
-      <div className="space-y-1">
+      <div className="flex flex-col gap-1">
         {sessions.length > 0 ? (
           sessions.map((session) => (
             <RecentLink
@@ -219,7 +212,7 @@ function RecentPopover({
           ))
         ) : (
           <div className="px-2 py-8 text-center text-sm text-muted-foreground">
-            {loading ? "正在加载最近聊天" : "没有匹配的聊天"}
+            {loading ? "正在加载会话" : "没有匹配的会话"}
           </div>
         )}
       </div>
@@ -264,7 +257,7 @@ function SidebarSection({
 }) {
   return (
     <nav className={cn("space-y-0.5", className)} aria-label={title}>
-      <div className="mb-1 px-1 text-[11px] font-medium text-muted-foreground">{title}</div>
+      <div className="mb-2 px-1 text-[11px] font-medium text-muted-foreground">{title}</div>
       {children}
     </nav>
   );

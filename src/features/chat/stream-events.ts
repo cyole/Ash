@@ -1,6 +1,9 @@
 import type { HermesStreamEvent } from "@/lib/hermes/types";
 import type { TraceItem } from "@/features/chat/types";
 
+const SENSITIVE_TRACE_KEY = /(api[-_]?key|authorization|bearer|credential|password|secret|token)/i;
+const BEARER_VALUE = /Bearer\s+[A-Za-z0-9._~+/=-]+/g;
+
 export function streamDelta(event: HermesStreamEvent) {
   const data = event.data;
   if (data === "[DONE]") {
@@ -36,6 +39,15 @@ export function streamDelta(event: HermesStreamEvent) {
     return typeof content === "string" ? content : "";
   }
 
+  const messageContent = readNestedString(record, ["message", "content"]);
+  if (messageContent && /delta|message/.test(event.type)) {
+    return messageContent;
+  }
+
+  if (typeof record.content === "string" && /delta|message/.test(event.type)) {
+    return record.content;
+  }
+
   if (typeof record.text === "string" && /delta|message/.test(event.type)) {
     return record.text;
   }
@@ -56,7 +68,19 @@ export function streamFinalText(event: HermesStreamEvent) {
   }
 
   const record = data as Record<string, unknown>;
-  return typeof record.output === "string" ? record.output : "";
+  const choiceMessage = readChoiceMessage(record);
+  if (choiceMessage) {
+    return choiceMessage;
+  }
+
+  for (const key of ["output", "content", "text", "output_text"]) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return value;
+    }
+  }
+
+  return readNestedString(record, ["message", "content"]) ?? "";
 }
 
 export function streamTrace(event: HermesStreamEvent): Omit<TraceItem, "id" | "createdAt"> | null {
@@ -71,7 +95,7 @@ export function streamTrace(event: HermesStreamEvent): Omit<TraceItem, "id" | "c
   const failed = /failed|error/.test(eventName) || detail.toLowerCase().includes("error");
 
   return {
-    label: eventName,
+    label: traceLabel(eventName),
     detail,
     status: failed ? "error" : /completed|done|resolved/.test(eventName) ? "done" : "running",
   };
@@ -101,5 +125,66 @@ function traceDetail(data: unknown) {
     }
   }
 
-  return JSON.stringify(data).slice(0, 240);
+  return safeJsonPreview(data);
+}
+
+function traceLabel(eventName: string) {
+  const labels: Record<string, string> = {
+    "message.completed": "消息完成",
+    "message.delta": "消息生成中",
+    "run.completed": "运行完成",
+    "run.failed": "运行失败",
+    "run.started": "开始运行",
+    "run.stopped": "已停止",
+    "tool.completed": "工具完成",
+    "tool.failed": "工具失败",
+    "tool.started": "工具调用",
+  };
+
+  return labels[eventName] ?? eventName;
+}
+
+function readChoiceMessage(record: Record<string, unknown>) {
+  const choices = record.choices;
+  if (!Array.isArray(choices)) {
+    return "";
+  }
+
+  const first = choices[0] as { message?: { content?: unknown } } | undefined;
+  return typeof first?.message?.content === "string" ? first.message.content : "";
+}
+
+function readNestedString(record: Record<string, unknown>, path: string[]) {
+  let value: unknown = record;
+
+  for (const key of path) {
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+
+    value = (value as Record<string, unknown>)[key];
+  }
+
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function safeJsonPreview(data: unknown) {
+  try {
+    return JSON.stringify(data, redactTraceValue).slice(0, 240);
+  } catch (error) {
+    console.error("Failed to serialize Hermes trace event", error);
+    return "事件已接收";
+  }
+}
+
+function redactTraceValue(key: string, value: unknown) {
+  if (SENSITIVE_TRACE_KEY.test(key)) {
+    return "[redacted]";
+  }
+
+  if (typeof value === "string") {
+    return value.replace(BEARER_VALUE, "Bearer [redacted]");
+  }
+
+  return value;
 }

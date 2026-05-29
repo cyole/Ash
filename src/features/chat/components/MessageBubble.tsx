@@ -1,10 +1,17 @@
 import type { ReactNode } from "react";
 import { Bot, Copy, RotateCcw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { MarkdownMessage } from "@/features/chat/components/MarkdownMessage";
 import type { ChatMessage } from "@/features/chat/types";
 import { cn } from "@/lib/utils";
 
-export function MessageBubble({ message }: { message: ChatMessage }) {
+interface MessageBubbleProps {
+  message: ChatMessage;
+  onCopy: () => void;
+  onRetry: () => void;
+}
+
+export function MessageBubble({ message, onCopy, onRetry }: MessageBubbleProps) {
   if (message.role === "user") {
     return (
       <article className="flex justify-end">
@@ -36,22 +43,46 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
           </MarkdownMessage>
         </div>
         <div className="mt-2 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-          <ActionButton label="复制" icon={<Copy className="h-3.5 w-3.5" />} />
-          <ActionButton label="重新生成" icon={<RotateCcw className="h-3.5 w-3.5" />} />
+          <ActionButton
+            label="复制"
+            icon={<Copy className="h-3.5 w-3.5" />}
+            onClick={onCopy}
+            disabled={!message.content.trim()}
+          />
+          <ActionButton
+            label="重新生成"
+            icon={<RotateCcw className="h-3.5 w-3.5" />}
+            onClick={onRetry}
+            disabled={message.streaming}
+          />
         </div>
       </div>
     </article>
   );
 }
 
-function ActionButton({ icon, label }: { icon: ReactNode; label: string }) {
+function ActionButton({
+  disabled,
+  icon,
+  label,
+  onClick,
+}: {
+  disabled?: boolean;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="icon"
       aria-label={label}
-      className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      disabled={disabled}
+      onClick={onClick}
+      className="h-6 w-6 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
     >
       {icon}
-    </button>
+    </Button>
   );
 }

@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { errorMessage } from "@/lib/errors";
 import { hermesQueryKeys } from "@/lib/hermes/queries";
 import { getExtensionsCatalog } from "@/lib/tauri";
@@ -13,6 +14,12 @@ import { cn } from "@/lib/utils";
 import type { HermesPluginCatalogItem, HermesSkillCatalogItem } from "@/types/hermes";
 
 type CatalogMode = "all" | "skills" | "plugins";
+
+const catalogModeOptions = [
+  ["all", "全部"],
+  ["skills", "技能"],
+  ["plugins", "插件"],
+] as const satisfies ReadonlyArray<readonly [CatalogMode, string]>;
 
 export function ExtensionsPage() {
   const [query, setQuery] = useState("");
@@ -72,25 +79,31 @@ export function ExtensionsPage() {
                 />
               </div>
 
-              <div className="flex h-9 rounded-md border border-border bg-muted p-0.5">
-                {([
-                  ["all", "全部"],
-                  ["skills", "技能"],
-                  ["plugins", "插件"],
-                ] as const).map(([value, label]) => (
-                  <button
+              <ToggleGroup
+                type="single"
+                value={mode}
+                onValueChange={(value) => {
+                  if (isCatalogMode(value)) {
+                    setMode(value);
+                  }
+                }}
+                size="sm"
+                spacing={0}
+                className="h-9 rounded-md border border-border bg-muted p-0.5"
+              >
+                {catalogModeOptions.map(([value, label]) => (
+                  <ToggleGroupItem
                     key={value}
-                    type="button"
-                    onClick={() => setMode(value)}
+                    value={value}
                     className={cn(
-                      "min-w-16 rounded px-3 text-xs font-medium text-muted-foreground transition-colors",
-                      mode === value && "bg-background text-foreground shadow-sm",
+                      "min-w-16 rounded border-0 px-3 text-xs text-muted-foreground",
+                      "data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm",
                     )}
                   >
                     {label}
-                  </button>
+                  </ToggleGroupItem>
                 ))}
-              </div>
+              </ToggleGroup>
             </div>
 
             {catalog.isLoading ? (
@@ -305,6 +318,10 @@ function matchesSkill(skill: HermesSkillCatalogItem, query: string) {
     skill.author,
     skill.path,
   ].join(" ").toLowerCase().includes(needle);
+}
+
+function isCatalogMode(value: string): value is CatalogMode {
+  return value === "all" || value === "skills" || value === "plugins";
 }
 
 function matchesPlugin(plugin: HermesPluginCatalogItem, query: string) {

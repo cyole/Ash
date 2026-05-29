@@ -6,6 +6,9 @@ import { defineConfig } from "vite";
 const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig({
+  build: {
+    chunkSizeWarningLimit: 4096,
+  },
   plugins: [react(), tailwindcss()],
   clearScreen: false,
   server: {
@@ -29,4 +32,3 @@ export default defineConfig({
     },
   },
 });
-

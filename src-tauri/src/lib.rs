@@ -2,12 +2,39 @@ mod commands;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Manager;
+use tauri_plugin_log::log::LevelFilter;
 
 static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+fn focus_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+fn log_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    tauri_plugin_log::Builder::new()
+        .level(LevelFilter::Info)
+        .level_for("tao", LevelFilter::Warn)
+        .level_for("tauri_runtime_wry", LevelFilter::Warn)
+        .level_for("wry", LevelFilter::Warn)
+        .build()
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            focus_main_window(app);
+        }))
+        .plugin(log_plugin())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             commands::runtime::start_runtime_on_startup(app.handle().clone());
@@ -41,7 +68,9 @@ pub fn run() {
             commands::runtime::model_config_status,
             commands::runtime::model_config_save_openai,
             commands::runtime::model_config_fetch_openai_models,
-            commands::runtime::hermes_chat_stream
+            commands::runtime::hermes_chat_stream,
+            commands::settings::app_settings_load,
+            commands::settings::app_settings_save
         ])
         .run(tauri::generate_context!())
         .expect("Hermes 桌面应用运行失败");

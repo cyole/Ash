@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { errorMessage } from "@/lib/errors";
 import { hermesQueryKeys } from "@/lib/hermes/queries";
@@ -172,47 +173,52 @@ export function ModelsPage() {
           </div>
 
           <div className="grid gap-4 p-4 md:grid-cols-2">
-            <Field label="配置名称">
+            <ModelConfigField label="配置名称" htmlFor="model-config-name">
               <Input
+                id="model-config-name"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 placeholder={DEFAULT_PROVIDER_NAME}
                 autoComplete="off"
               />
-            </Field>
-            <Field label="服务地址">
+            </ModelConfigField>
+            <ModelConfigField label="服务地址" htmlFor="model-config-base-url">
               <Input
+                id="model-config-base-url"
                 value={baseUrl}
                 onChange={(event) => setBaseUrl(event.target.value)}
                 placeholder={DEFAULT_BASE_URL}
                 autoComplete="off"
               />
-            </Field>
-            <Field label="API Key">
+            </ModelConfigField>
+            <ModelConfigField label="API Key" htmlFor="model-config-api-key">
               <Input
+                id="model-config-api-key"
                 type="password"
                 value={apiKey}
                 onChange={(event) => setApiKey(event.target.value)}
                 placeholder={current?.hasApiKey ? "已保存，重新保存时需要再次输入" : "sk-..."}
                 autoComplete="off"
               />
-            </Field>
-            <Field label="默认模型">
+            </ModelConfigField>
+            <ModelConfigField label="默认模型" htmlFor="model-config-model">
               <Input
+                id="model-config-model"
                 value={model}
                 onChange={(event) => setModel(event.target.value)}
                 placeholder={DEFAULT_MODEL}
                 autoComplete="off"
               />
-            </Field>
-            <Field label="上下文长度" optional>
+            </ModelConfigField>
+            <ModelConfigField label="上下文长度" htmlFor="model-config-context-length" optional>
               <Input
+                id="model-config-context-length"
                 value={contextLength}
                 onChange={(event) => setContextLength(event.target.value)}
                 placeholder="可选"
                 inputMode="numeric"
               />
-            </Field>
+            </ModelConfigField>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-3">
@@ -247,17 +253,18 @@ export function ModelsPage() {
               </div>
               <div className="grid max-h-72 gap-2 overflow-auto sm:grid-cols-2">
                 {availableModels.map((modelId) => (
-                  <button
+                  <Button
                     key={modelId}
                     type="button"
+                    variant="outline"
                     onClick={() => setModel(modelId)}
                     className={cn(
-                      "min-w-0 rounded-md border border-border px-3 py-2 text-left text-sm transition-colors hover:bg-accent",
+                      "h-auto w-full min-w-0 justify-start rounded-md px-3 py-2 text-left text-sm",
                       modelId === model && "border-primary bg-accent",
                     )}
                   >
                     <span className="block truncate font-mono text-xs">{modelId}</span>
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
@@ -298,23 +305,25 @@ export function ModelsPage() {
   );
 }
 
-function Field({
+function ModelConfigField({
+  htmlFor,
   label,
   optional = false,
   children,
 }: {
+  htmlFor: string;
   label: string;
   optional?: boolean;
   children: ReactNode;
 }) {
   return (
-    <label className="block min-w-0">
-      <span className="mb-2 flex items-center gap-2 text-sm font-medium">
+    <Field className="min-w-0 gap-2">
+      <FieldLabel htmlFor={htmlFor}>
         {label}
         {optional ? <span className="text-xs font-normal text-muted-foreground">可选</span> : null}
-      </span>
+      </FieldLabel>
       {children}
-    </label>
+    </Field>
   );
 }
 

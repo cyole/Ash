@@ -3,6 +3,16 @@
   "identifier": "default",
   "description": "Default permissions for the Hermes desktop window",
   "windows": ["main"],
-  "permissions": ["core:default", "opener:default"]
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "dialog:default",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text",
+    "clipboard-manager:allow-clear",
+    "notification:default",
+    "os:default",
+    "log:default",
+    "window-state:default"
+  ]
 }
-

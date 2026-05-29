@@ -66,13 +66,15 @@ export function StatusBar() {
             <Bot className="h-3 w-3" />
           </span>
           <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{title}</span>
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             type="button"
             aria-label="关闭标签"
-            className="flex h-[18px] w-[18px] items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="h-[18px] w-[18px] rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             <X className="h-3 w-3" />
-          </button>
+          </Button>
         </div>
 
         <Button variant="ghost" size="icon" asChild className="h-7 w-7 rounded-full" aria-label="新建聊天">
