@@ -179,3 +179,126 @@ select {
   -webkit-app-region: no-drag;
   font: inherit;
 }
+
+.hermes-chat-composer-body {
+  overflow-y: auto !important;
+}
+
+.hermes-chat-composer-footer {
+  width: 100%;
+}
+
+.hermes-lobe-markdown {
+  color: hsl(var(--foreground));
+  letter-spacing: 0;
+}
+
+.hermes-lobe-markdown :where(p) {
+  margin-block: 0.28em;
+  letter-spacing: 0;
+}
+
+.hermes-lobe-markdown :where(p:first-child, ul:first-child, ol:first-child, pre:first-child, table:first-child) {
+  margin-block-start: 0;
+}
+
+.hermes-lobe-markdown :where(p:last-child, ul:last-child, ol:last-child, pre:last-child, table:last-child) {
+  margin-block-end: 0;
+}
+
+.hermes-lobe-markdown :where(h1, h2, h3, h4, h5, h6) {
+  margin-block: 0.95em 0.45em;
+  letter-spacing: 0;
+}
+
+.hermes-lobe-markdown :where(hr) {
+  margin-block: 18px;
+  border-color: hsl(var(--border));
+  opacity: 0.9;
+}
+
+.hermes-lobe-markdown :where(blockquote) {
+  margin-block: 0.65em;
+  border-inline-start-color: hsl(var(--border));
+}
+
+.hermes-lobe-markdown :where(ul, ol) {
+  margin-block: 0.5em;
+}
+
+.hermes-lobe-markdown :where(pre) {
+  margin-block: 0.7em;
+  border-radius: var(--hermes-radius-lg);
+  overflow: hidden;
+}
+
+.hermes-lobe-markdown :where(code:not(:has(span))) {
+  border-color: hsl(var(--border));
+  background: hsl(var(--muted));
+}
+
+.hermes-lobe-markdown :where(div:has(> table)) {
+  overflow-x: auto;
+  max-width: 100%;
+  margin-block: 0.75em;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--hermes-radius-lg);
+  background: hsl(var(--card));
+}
+
+.hermes-lobe-markdown :where(div:has(> table)) > table {
+  display: table;
+  width: auto;
+  min-width: min(100%, 560px);
+  max-width: none;
+  margin-block: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.hermes-lobe-markdown :where(table thead) {
+  background: hsl(var(--muted));
+}
+
+.hermes-lobe-markdown :where(table tr) {
+  box-shadow: inset 0 -1px 0 hsl(var(--border));
+}
+
+.hermes-lobe-markdown :where(table tr:last-child) {
+  box-shadow: none;
+}
+
+.hermes-lobe-markdown :where(table th, table td) {
+  min-width: 108px;
+  padding: 11px 14px;
+  border-inline-end: 1px solid hsl(var(--border));
+  line-height: 1.55;
+}
+
+.hermes-lobe-markdown :where(table th:last-child, table td:last-child) {
+  border-inline-end: 0;
+}
+
+.hermes-lobe-markdown :where(.table-copy-button) {
+  inset-block-start: 14px !important;
+  inset-inline-end: 8px !important;
+  border-radius: var(--hermes-radius-md) !important;
+}
+
+.hermes-lobe-markdown :where(.ant-image) {
+  display: block;
+  max-width: min(100%, 720px);
+  margin-block: 0.75em;
+}
+
+.hermes-lobe-markdown :where(img, .ant-image-img) {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--hermes-radius-lg);
+  object-fit: contain;
+}
+
+.hermes-lobe-markdown :where(.ant-image-img) {
+  max-height: 360px;
+  background: hsl(var(--muted));
+}

@@ -20,6 +20,12 @@ export function MarkdownMessage({ children, streaming }: MarkdownMessageProps) {
           fullFeatured: true,
           theme: settings.highlighterTheme as HighlightTheme,
         },
+        img: {
+          maxHeight: 360,
+          objectFit: "contain",
+          preview: false,
+          variant: "outlined",
+        },
         mermaid: {
           fullFeatured: true,
           theme: settings.mermaidTheme as MermaidTheme,
@@ -40,7 +46,8 @@ export function MarkdownMessage({ children, streaming }: MarkdownMessageProps) {
         enableStream={shouldAnimate}
         fontSize={settings.chatFontSize}
         fullFeaturedCodeBlock
-        lineHeight={1.75}
+        lineHeight={1.68}
+        marginMultiple={0.85}
         streamSmoothingPreset={settings.animationMode === "elegant" ? "silky" : "balanced"}
         variant="chat"
       >

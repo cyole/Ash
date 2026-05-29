@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useEffect, useRef } from "react";
 import type { IEditor } from "@lobehub/editor";
-import { ChatInput, ChatInputActionBar, Editor } from "@lobehub/editor/react";
+import { ChatInput, Editor } from "@lobehub/editor/react";
 import {
   AlertCircle,
   AtSign,
@@ -118,61 +118,60 @@ export function ChatComposer({
         <div className="rounded-xl border border-border bg-card shadow-[0_18px_45px_rgba(15,23,42,0.10)]">
           <ChatInput
             className="border-0 bg-transparent"
-            defaultHeight={84}
+            classNames={{
+              body: "hermes-chat-composer-body",
+              footer: "hermes-chat-composer-footer",
+            }}
+            defaultHeight={58}
             footer={
-              <ChatInputActionBar
-                className="px-2 pb-2 pt-1"
-                left={
-                  <div className="flex items-center gap-1.5">
-                    <ToolButton label="附件" icon={<Paperclip className="h-3.5 w-3.5" />} />
-                    <ToolButton label="提及" icon={<AtSign className="h-3.5 w-3.5" />} />
-                    <ToolButton label="指令" text="/" />
-                    <ToolButton label="图片" icon={<ImageIcon className="h-3.5 w-3.5" />} />
-                  </div>
-                }
-                right={
-                  <div className="flex items-center gap-1.5">
-                    <ModelSelect
-                      models={models}
-                      modelsLoading={modelsLoading}
-                      selectedModel={selectedModel}
-                      onSelectedModelChange={onSelectedModelChange}
-                    />
-                    <ToolButton label="网络" icon={<Globe2 className="h-3.5 w-3.5" />} />
-                    <ToolButton label="展开输入框" icon={<Expand className="h-3.5 w-3.5" />} />
-                    {isStreaming ? (
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={onStop}
-                        aria-label="停止"
-                        className="h-8 w-8 rounded-full"
-                      >
-                        <Square className="h-3.5 w-3.5" />
-                      </Button>
-                    ) : (
-                      <Button
-                        size="icon"
-                        onClick={onSend}
-                        disabled={!apiReady || !input.trim()}
-                        aria-label="发送"
-                        className="h-8 w-8 rounded-full bg-[#1f1f1f] text-white hover:bg-black"
-                      >
-                        <Send className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                  </div>
-                }
-              />
+              <div className="flex w-full flex-wrap items-center justify-between gap-2 px-2 pb-2 pt-1">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <ToolButton label="附件" icon={<Paperclip className="h-3.5 w-3.5" />} />
+                  <ToolButton label="提及" icon={<AtSign className="h-3.5 w-3.5" />} />
+                  <ToolButton label="指令" text="/" />
+                  <ToolButton label="图片" icon={<ImageIcon className="h-3.5 w-3.5" />} />
+                </div>
+                <div className="ml-auto flex min-w-0 items-center justify-end gap-1.5">
+                  <ModelSelect
+                    models={models}
+                    modelsLoading={modelsLoading}
+                    selectedModel={selectedModel}
+                    onSelectedModelChange={onSelectedModelChange}
+                  />
+                  <ToolButton label="网络" icon={<Globe2 className="h-3.5 w-3.5" />} />
+                  <ToolButton label="展开输入框" icon={<Expand className="h-3.5 w-3.5" />} />
+                  {isStreaming ? (
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={onStop}
+                      aria-label="停止"
+                      className="h-8 w-8 rounded-full"
+                    >
+                      <Square className="h-3.5 w-3.5" />
+                    </Button>
+                  ) : (
+                    <Button
+                      size="icon"
+                      onClick={onSend}
+                      disabled={!apiReady || !input.trim()}
+                      aria-label="发送"
+                      className="h-8 w-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+              </div>
             }
-            maxHeight={220}
-            minHeight={76}
-            resize
+            maxHeight={180}
+            minHeight={58}
+            resize={false}
             showResizeHandle={false}
           >
             <Editor
               autoFocus
-              className="min-h-[48px] px-3 py-2 text-[14px] leading-6"
+              className="min-h-[44px] px-3 py-2 text-[14px] leading-6"
               content=""
               editable={!isStreaming && apiReady}
               editor={editor}
@@ -227,7 +226,7 @@ function ModelSelect({
   selectedModel: string;
 }) {
   return (
-    <div className="inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-[12px] text-muted-foreground">
+    <div className="inline-flex h-7 min-w-0 items-center gap-1.5 rounded-full px-2 text-[12px] text-muted-foreground">
       {modelsLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
       <Select
         value={selectedModel || DEFAULT_MODEL_VALUE}
@@ -239,7 +238,7 @@ function ModelSelect({
         <SelectTrigger
           size="sm"
           aria-label="选择模型"
-          className="h-7 w-[160px] justify-start border-0 bg-transparent px-0 py-0 text-[12px] text-muted-foreground shadow-none focus-visible:ring-0"
+          className="h-7 w-[148px] justify-start border-0 bg-transparent px-0 py-0 text-[12px] text-muted-foreground shadow-none focus-visible:ring-0"
         >
           <SelectValue placeholder="默认模型" />
         </SelectTrigger>

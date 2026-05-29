@@ -43,7 +43,10 @@ export function StatusBar() {
   }, [location.pathname, sessionId, sessionsQuery.data]);
 
   return (
-    <header className="flex h-[var(--hermes-titlebar-height)] shrink-0 select-none items-center justify-between bg-background text-muted-foreground">
+    <header
+      className="flex h-[var(--hermes-titlebar-height)] shrink-0 select-none items-center justify-between bg-background text-muted-foreground"
+      data-tauri-drag-region
+    >
       <div className="h-full w-[164px] shrink-0" data-tauri-drag-region />
 
       <div className="flex min-w-0 flex-1 items-center gap-1.5 px-2">
