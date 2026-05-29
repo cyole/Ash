@@ -28,9 +28,10 @@ user-invocable: false
 - Hermes is a desktop client. Optimize for compact, repeat-use density rather than mobile-friendly oversized controls.
 - Base UI text should feel close to LobeHub/LobeChat: body 13-14px, metadata 10-12px, compact titles 15-16px, with line-height doing the readability work.
 - Use the global Hermes tokens in `src/styles/globals.css` first: `--hermes-titlebar-height`, `--hermes-chat-header-height`, `--hermes-sidebar-width`, `--hermes-action-sm`, `--hermes-action-md`, `--hermes-radius-*`, and `--hermes-shadow-*`.
+- Match the Lobe-style shell color hierarchy: titlebar and sidebar share the same neutral gray surface, while the main workspace is a clean white panel with a subtle border and top-left rounding. Avoid gray page backgrounds inside the main workspace.
 - Action icons should match Lobe UI density: 24px for small inline actions, 28px for toolbar actions, 32px only for primary/send or prominent header actions.
 - Prefer borderless/ghost icon buttons with subtle hover fill. Message actions should stay hidden until hover or active popup state.
-- Sidebar rows are compact: 32px row height, 13px labels, 14-15px icons, 6-8px radius, and muted gray text until active.
+- Sidebar rows are compact but not cramped: around 36px row height, 13px labels, 16px icons, 6-8px radius, and muted gray text until active. Keep the desktop sidebar near the old Hermes proportion, around 236px wide.
 - Chat assistant messages use document layout: avatar/title row plus raw markdown content. Avoid wrapping assistant content in cards unless it is a tool/result block.
 - User messages can be a small filled bubble with 12-14px padding, not a large card.
 - Composer uses a single rounded input surface with internal 8-16px padding, compact action bars, and a 28-32px send button.

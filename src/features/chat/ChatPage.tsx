@@ -15,14 +15,14 @@ export function ChatPage() {
   const [traceOpen, setTraceOpen] = useState(false);
 
   return (
-    <div className="h-full min-h-0 bg-background p-1.5 pr-2 pt-0">
+    <div className="h-full min-h-0 bg-card">
       <div
-        className="grid h-full min-h-0 overflow-hidden rounded-lg border border-black/10 bg-[#fbfbfb] shadow-[var(--hermes-shadow-panel)]"
+        className="grid h-full min-h-0 overflow-hidden bg-card"
         style={{
           gridTemplateColumns: traceOpen ? "minmax(0, 1fr) 292px" : "minmax(0, 1fr)",
         }}
       >
-        <section className="flex min-h-0 min-w-0 flex-col bg-[#fbfbfb]">
+        <section className="flex min-h-0 min-w-0 flex-col bg-card">
           <ChatHeader
             chat={chat}
             traceOpen={traceOpen}
@@ -31,7 +31,7 @@ export function ChatPage() {
           <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
             <ChatMessageList loading={chat.messagesQuery.isLoading} messages={chat.activeMessages} />
           </div>
-          <div className="shrink-0 bg-[#fbfbfb] px-4 pb-3 pt-1.5">
+          <div className="shrink-0 bg-card px-4 pb-3 pt-1.5">
             <ChatComposer
               activeSession={chat.activeSession}
               apiReady={chat.apiReady}
@@ -79,7 +79,7 @@ function ChatHeader({
   const model = chat.activeSession ? sessionModelLabel(chat.activeSession) : chat.selectedModel || "默认模型";
 
   return (
-    <header className="flex h-[var(--hermes-chat-header-height)] shrink-0 items-center justify-between border-b border-border bg-[#fbfbfb] px-4">
+    <header className="flex h-[var(--hermes-chat-header-height)] shrink-0 items-center justify-between border-b border-border bg-card px-4">
       <div className="flex min-w-0 items-center gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-2">

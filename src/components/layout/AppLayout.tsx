@@ -8,7 +8,7 @@ export function AppLayout() {
       <StatusBar />
       <div className="flex min-h-0 flex-1">
         <AppSidebar />
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-tl-[14px] border-l border-t border-black/10 bg-card">
           <Outlet />
         </main>
       </div>

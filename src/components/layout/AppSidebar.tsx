@@ -77,14 +77,14 @@ export function AppSidebar() {
   }, [recentFilter, recentSessions]);
 
   return (
-    <aside className="relative flex h-full w-[var(--hermes-sidebar-width)] shrink-0 flex-col bg-sidebar px-2 pb-2.5 pt-3 text-[#696969]">
-      <div className="mb-4 flex items-center gap-2 px-1">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[linear-gradient(135deg,#111,#555)] text-white shadow-sm">
-          <BriefcaseBusiness className="h-3.5 w-3.5" />
+    <aside className="relative flex h-full w-[var(--hermes-sidebar-width)] shrink-0 flex-col bg-sidebar px-3 pb-3 pt-3.5 text-[#696969]">
+      <div className="mb-4 flex items-center gap-2.5 px-1">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[linear-gradient(135deg,#111,#555)] text-white shadow-sm">
+          <BriefcaseBusiness className="h-4 w-4" />
         </div>
         <div className="min-w-0">
-          <div className="truncate text-[13px] font-semibold text-foreground">Hermes</div>
-          <div className="truncate text-[10px] text-muted-foreground">Desktop workspace</div>
+          <div className="truncate text-[14px] font-semibold text-foreground">Hermes</div>
+          <div className="truncate text-[11px] text-muted-foreground">Desktop workspace</div>
         </div>
       </div>
 
@@ -140,7 +140,7 @@ function RecentSection({
       <button
         type="button"
         onClick={() => onOpenChange(!open)}
-        className="mb-1 flex h-6 items-center gap-1 rounded-md px-1 text-[10.5px] font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/15"
+        className="mb-1 flex h-7 items-center gap-1 rounded-md px-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/15"
       >
         最近
         <ChevronDown className={cn("h-3 w-3 transition-transform", open && "rotate-180")} />
@@ -158,9 +158,9 @@ function RecentSection({
         <button
           type="button"
           onClick={() => onOpenChange(true)}
-          className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-[13px] transition-colors hover:bg-black/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/15"
+          className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2 text-[13px] transition-colors hover:bg-black/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/15"
         >
-          <MoreHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
+          <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
           <span>更多</span>
         </button>
       </div>
@@ -242,11 +242,11 @@ function RecentLink({
       to={`/chat?session=${encodeURIComponent(id)}`}
       onClick={onClick}
       className={cn(
-        "flex h-8 min-w-0 items-center gap-2 rounded-lg px-2 text-[13px] transition-colors hover:bg-black/5 hover:text-foreground",
+        "flex h-9 min-w-0 items-center gap-2.5 rounded-lg px-2 text-[13px] transition-colors hover:bg-black/5 hover:text-foreground",
         className,
       )}
     >
-      <Hash className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      <Hash className="h-4 w-4 shrink-0 text-muted-foreground" />
       <span className="truncate">{title}</span>
     </Link>
   );
@@ -263,7 +263,7 @@ function SidebarSection({
 }) {
   return (
     <nav className={cn("space-y-0.5", className)} aria-label={title}>
-      <div className="mb-1 px-1 text-[10.5px] font-medium text-muted-foreground">{title}</div>
+      <div className="mb-1 px-1 text-[11px] font-medium text-muted-foreground">{title}</div>
       {children}
     </nav>
   );
@@ -276,12 +276,12 @@ function SidebarLink({ item }: { item: NavItem }) {
       end={item.to === "/"}
       className={({ isActive }) =>
         cn(
-          "flex h-8 items-center gap-2 rounded-lg px-2 text-[13px] transition-colors hover:bg-black/5 hover:text-foreground",
+          "flex h-9 items-center gap-2.5 rounded-lg px-2 text-[13px] transition-colors hover:bg-black/5 hover:text-foreground",
           isActive && "bg-black/[0.055] font-medium text-foreground",
         )
       }
     >
-      <item.icon className="h-3.5 w-3.5" />
+      <item.icon className="h-4 w-4" />
       <span>{item.label}</span>
     </NavLink>
   );

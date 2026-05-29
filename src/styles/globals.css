@@ -30,9 +30,9 @@
 }
 
 :root {
-  --hermes-titlebar-height: 40px;
-  --hermes-chat-header-height: 48px;
-  --hermes-sidebar-width: 208px;
+  --hermes-titlebar-height: 44px;
+  --hermes-chat-header-height: 52px;
+  --hermes-sidebar-width: 236px;
   --hermes-action-sm: 24px;
   --hermes-action-md: 28px;
   --hermes-radius-sm: 4px;
@@ -60,7 +60,7 @@
   --border: 0 0% 88%;
   --input: 0 0% 86%;
   --ring: 0 0% 28%;
-  --sidebar: 0 0% 91.5%;
+  --sidebar: 0 0% 93.5%;
   --radius: 8px;
 }
 
