@@ -3,6 +3,7 @@ import { Activity, Ellipsis, Loader2, MessageSquarePlus, RefreshCcw } from "luci
 import { Button } from "@/components/ui/button";
 import { ChatComposer } from "@/features/chat/components/ChatComposer";
 import { ChatMessageList } from "@/features/chat/components/ChatMessageList";
+import { LobeRuntimeProvider } from "@/features/chat/components/LobeRuntimeProvider";
 import { TracePanel } from "@/features/chat/components/TracePanel";
 import { useChatWorkspace } from "@/features/chat/hooks/useChatWorkspace";
 import { sessionModelLabel, sessionSource, sessionTitle } from "@/lib/hermes/session-format";
@@ -38,22 +39,22 @@ export function ChatPage() {
             />
           </div>
           <div className="shrink-0 bg-card px-4 pb-3 pt-1.5">
-            <ChatComposer
-              activeSession={chat.activeSession}
-              apiReady={chat.apiReady}
-              input={chat.input}
-              isStreaming={chat.isStreaming}
-              messages={chat.activeMessages}
-              modelError={chat.modelsQuery.error}
-              models={chat.modelsQuery.data ?? []}
-              modelsLoading={chat.modelsQuery.isLoading}
-              selectedModel={chat.selectedModel}
-              onInputChange={chat.setInput}
-              onRetry={chat.retryLastMessage}
-              onSelectedModelChange={chat.setSelectedModel}
-              onSend={() => void chat.sendMessage()}
-              onStop={chat.stopStreaming}
-            />
+            <LobeRuntimeProvider>
+              <ChatComposer
+                activeSession={chat.activeSession}
+                apiReady={chat.apiReady}
+                input={chat.input}
+                isStreaming={chat.isStreaming}
+                modelError={chat.modelsQuery.error}
+                models={chat.modelsQuery.data ?? []}
+                modelsLoading={chat.modelsQuery.isLoading}
+                selectedModel={chat.selectedModel}
+                onInputChange={chat.setInput}
+                onSelectedModelChange={chat.setSelectedModel}
+                onSend={() => void chat.sendMessage()}
+                onStop={chat.stopStreaming}
+              />
+            </LobeRuntimeProvider>
           </div>
         </section>
 

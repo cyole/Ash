@@ -3,7 +3,6 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { LucideIcon } from "lucide-react";
 import {
-  Bot,
   BriefcaseBusiness,
   Hash,
   FileText,
@@ -36,7 +35,6 @@ interface NavItem {
 const workspaceNav = [
   { to: "/", label: "首页", icon: Home },
   { to: "/chat", label: "聊天", icon: MessageSquare },
-  { to: "/sessions", label: "会话", icon: Bot },
   { to: "/tasks", label: "任务", icon: ListChecks },
   { to: "/jobs", label: "作业", icon: Workflow },
   { to: "/files", label: "文件", icon: FileText },
@@ -135,14 +133,14 @@ function RecentSection({
 }) {
   return (
     <section className="mt-4">
-      <div className="mb-2 px-1 text-[11px] font-medium text-muted-foreground">会话</div>
+      <div className="mb-2 px-1 text-[11px] font-medium text-muted-foreground">最近</div>
 
       <div className="flex flex-col gap-1">
         {sessions.length > 0 ? (
           sessions.map((session) => <RecentLink key={session.id} id={session.id} title={sessionTitle(session)} />)
         ) : (
           <div className="px-2 py-1.5 text-xs text-muted-foreground">
-            {loading ? "正在加载会话" : "暂无会话"}
+            {loading ? "正在加载最近记录" : "暂无最近记录"}
           </div>
         )}
 
@@ -176,7 +174,7 @@ function RecentPopover({
   return (
     <section className="absolute left-full top-0 z-30 h-full w-[320px] border-l border-border bg-[#fbfbfb] px-3.5 py-5 shadow-[12px_0_32px_rgba(0,0,0,0.055)]">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-base font-semibold text-foreground">会话</h2>
+        <h2 className="text-base font-semibold text-foreground">最近记录</h2>
         <Button
           type="button"
           variant="ghost"
@@ -194,7 +192,7 @@ function RecentPopover({
         <Input
           value={filter}
           onChange={(event) => onFilterChange(event.target.value)}
-          placeholder="搜索会话..."
+          placeholder="搜索最近记录..."
           className="h-9 rounded-xl bg-background pl-9 text-[13px]"
         />
       </div>
@@ -212,7 +210,7 @@ function RecentPopover({
           ))
         ) : (
           <div className="px-2 py-8 text-center text-sm text-muted-foreground">
-            {loading ? "正在加载会话" : "没有匹配的会话"}
+            {loading ? "正在加载最近记录" : "没有匹配的最近记录"}
           </div>
         )}
       </div>

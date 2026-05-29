@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Bot, ChevronLeft, ChevronRight, Clock3, HardDrive, Plus, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bot, Clock3, HardDrive, Plus, X } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { Button } from "@/components/ui/button";
 import { hermesQueryKeys, useHermesApi } from "@/lib/hermes/queries";
@@ -18,6 +18,9 @@ const routeTitles: Record<string, string> = {
   "/extensions": "扩展",
   "/settings": "设置",
 };
+
+const titlebarIconButtonClass =
+  "h-8 w-8 rounded-lg border-0 bg-transparent text-muted-foreground/70 shadow-none hover:bg-black/[0.055] hover:text-muted-foreground";
 
 export function StatusBar() {
   const location = useLocation();
@@ -45,21 +48,33 @@ export function StatusBar() {
   return (
     <header
       className="flex h-[var(--hermes-titlebar-height)] shrink-0 select-none items-center justify-between bg-background text-muted-foreground"
-      data-tauri-drag-region
+      data-tauri-drag-region="deep"
     >
-      <div className="h-full w-[164px] shrink-0" data-tauri-drag-region />
+      <div className="h-full w-[164px] shrink-0" data-tauri-drag-region="deep" />
 
       <div className="flex min-w-0 flex-1 items-center gap-1.5 px-2">
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full" onClick={() => navigate(-1)} aria-label="返回">
-            <ChevronLeft className="h-4 w-4" />
+          <Button
+            variant="ghost"
+            size="icon"
+            className={titlebarIconButtonClass}
+            onClick={() => navigate(-1)}
+            aria-label="返回"
+          >
+            <ArrowLeft className="h-[18px] w-[18px]" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full" onClick={() => navigate(1)} aria-label="前进">
-            <ChevronRight className="h-4 w-4" />
+          <Button
+            variant="ghost"
+            size="icon"
+            className={titlebarIconButtonClass}
+            onClick={() => navigate(1)}
+            aria-label="前进"
+          >
+            <ArrowRight className="h-[18px] w-[18px]" />
           </Button>
-          <Button variant="ghost" size="icon" asChild className="h-7 w-7 rounded-full" aria-label="会话历史">
+          <Button variant="ghost" size="icon" asChild className={titlebarIconButtonClass} aria-label="会话历史">
             <Link to="/sessions">
-              <Clock3 className="h-4 w-4" />
+              <Clock3 className="h-[18px] w-[18px]" />
             </Link>
           </Button>
         </div>
@@ -86,16 +101,16 @@ export function StatusBar() {
           </Link>
         </Button>
 
-        <div className="h-full min-w-4 flex-1" data-tauri-drag-region />
+        <div className="h-full min-w-4 flex-1" data-tauri-drag-region="deep" />
       </div>
 
       <div
         aria-label={apiReady ? "已连接到网关" : "正在连接网关"}
         title={apiReady ? "已连接到网关" : "正在连接网关"}
-        className="relative mr-3.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-black/5"
+        className="relative mr-3.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-0 bg-transparent text-muted-foreground/70 shadow-none transition-colors hover:bg-black/[0.055] hover:text-muted-foreground"
         role="status"
       >
-        <HardDrive className="h-4 w-4" />
+        <HardDrive className="h-[18px] w-[18px]" />
         <span
           className={cn(
             "absolute bottom-0.5 right-0.5 h-2 w-2 rounded-full border-2 border-background",

@@ -1,19 +1,17 @@
 import type { ReactNode } from "react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { IEditor } from "@lobehub/editor";
-import { ChatInput, Editor } from "@lobehub/editor/react";
+import { ChatInput, ChatInputActionBar, Editor, SendButton } from "@lobehub/editor/react";
 import {
   AlertCircle,
   AtSign,
-  Expand,
   Globe2,
   ImageIcon,
   Loader2,
+  Maximize2,
+  Minimize2,
   Paperclip,
-  RotateCcw,
-  Send,
   Sparkles,
-  Square,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,8 +22,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { ChatMessage } from "@/features/chat/types";
 import type { HermesModel, HermesSession } from "@/lib/hermes/types";
+import { cn } from "@/lib/utils";
 
 const DEFAULT_MODEL_VALUE = "__hermes_default_model__";
 
@@ -34,13 +32,11 @@ interface ChatComposerProps {
   apiReady: boolean;
   input: string;
   isStreaming: boolean;
-  messages: ChatMessage[];
   modelError: unknown;
   models: HermesModel[];
   modelsLoading: boolean;
   selectedModel: string;
   onInputChange: (value: string) => void;
-  onRetry: () => void;
   onSelectedModelChange: (value: string) => void;
   onSend: () => void;
   onStop: () => void;
@@ -51,13 +47,11 @@ export function ChatComposer({
   apiReady,
   input,
   isStreaming,
-  messages,
   modelError,
   models,
   modelsLoading,
   selectedModel,
   onInputChange,
-  onRetry,
   onSelectedModelChange,
   onSend,
   onStop,
@@ -65,7 +59,7 @@ export function ChatComposer({
   const editor = Editor.useEditor();
   const editorRef = useRef<IEditor | null>(null);
   const lastSyncedInput = useRef(input);
-  const hasMessages = messages.length > 0;
+  const [expanded, setExpanded] = useState(false);
   const disabledReason = !apiReady
     ? "正在连接本地服务"
     : isStreaming
@@ -113,65 +107,76 @@ export function ChatComposer({
   }
 
   return (
-    <div className="w-full">
-      <div className="mx-auto w-full max-w-[860px]">
-        <div className="rounded-xl border border-border bg-card shadow-[0_18px_45px_rgba(15,23,42,0.10)]">
+    <div
+      className={cn(
+        "w-full",
+        expanded &&
+          "fixed inset-0 z-50 flex items-end bg-card/95 px-5 pb-6 pt-[calc(var(--hermes-titlebar-height)+24px)] backdrop-blur-sm",
+      )}
+    >
+      <div className={cn("mx-auto w-full max-w-[1040px]", expanded && "max-w-[1180px]")}>
+        <div className="w-full">
           <ChatInput
-            className="border-0 bg-transparent"
+            className="hermes-chat-input-shell"
             classNames={{
               body: "hermes-chat-composer-body",
               footer: "hermes-chat-composer-footer",
             }}
-            defaultHeight={58}
+            defaultHeight={expanded ? 220 : 88}
             footer={
-              <div className="flex w-full flex-wrap items-center justify-between gap-2 px-2 pb-2 pt-1">
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <ToolButton label="附件" icon={<Paperclip className="h-3.5 w-3.5" />} />
-                  <ToolButton label="提及" icon={<AtSign className="h-3.5 w-3.5" />} />
-                  <ToolButton label="指令" text="/" />
-                  <ToolButton label="图片" icon={<ImageIcon className="h-3.5 w-3.5" />} />
-                </div>
-                <div className="ml-auto flex min-w-0 items-center justify-end gap-1.5">
-                  <ModelSelect
-                    models={models}
-                    modelsLoading={modelsLoading}
-                    selectedModel={selectedModel}
-                    onSelectedModelChange={onSelectedModelChange}
-                  />
-                  <ToolButton label="网络" icon={<Globe2 className="h-3.5 w-3.5" />} />
-                  <ToolButton label="展开输入框" icon={<Expand className="h-3.5 w-3.5" />} />
-                  {isStreaming ? (
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={onStop}
-                      aria-label="停止"
-                      className="h-8 w-8 rounded-full"
-                    >
-                      <Square className="h-3.5 w-3.5" />
-                    </Button>
-                  ) : (
-                    <Button
-                      size="icon"
-                      onClick={onSend}
-                      disabled={!apiReady || !input.trim()}
-                      aria-label="发送"
-                      className="h-8 w-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
-                    >
-                      <Send className="h-3.5 w-3.5" />
-                    </Button>
-                  )}
-                </div>
-              </div>
+              <ChatInputActionBar
+                className="hermes-chat-action-bar"
+                left={
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <ToolButton label="附件" icon={<Paperclip className="h-3.5 w-3.5" />} />
+                    <ToolButton label="提及" icon={<AtSign className="h-3.5 w-3.5" />} />
+                    <ToolButton label="指令" text="/" />
+                    <ToolButton label="图片" icon={<ImageIcon className="h-3.5 w-3.5" />} />
+                  </div>
+                }
+                right={
+                  <div className="ml-auto flex min-w-0 items-center justify-end gap-1.5">
+                    <ModelSelect
+                      models={models}
+                      modelsLoading={modelsLoading}
+                      selectedModel={selectedModel}
+                      onSelectedModelChange={onSelectedModelChange}
+                    />
+                    <ToolButton label="网络" icon={<Globe2 className="h-3.5 w-3.5" />} />
+                    <ToolButton
+                      disabled={false}
+                      label={expanded ? "收起输入框" : "展开输入框"}
+                      icon={
+                        expanded ? (
+                          <Minimize2 className="h-3.5 w-3.5" />
+                        ) : (
+                          <Maximize2 className="h-3.5 w-3.5" />
+                        )
+                      }
+                      pressed={expanded}
+                      onClick={() => setExpanded((current) => !current)}
+                    />
+                    <SendButton
+                      disabled={!apiReady || (!isStreaming && !input.trim())}
+                      generating={isStreaming}
+                      shape="round"
+                      size={32}
+                      onSend={onSend}
+                      onStop={onStop}
+                    />
+                  </div>
+                }
+              />
             }
-            maxHeight={180}
-            minHeight={58}
+            fullscreen={expanded}
+            maxHeight={expanded ? 420 : 220}
+            minHeight={expanded ? 320 : 88}
             resize={false}
             showResizeHandle={false}
           >
             <Editor
               autoFocus
-              className="min-h-[44px] px-3 py-2 text-[14px] leading-6"
+              className="hermes-chat-editor min-h-[64px] text-[14px] leading-6"
               content=""
               editable={!isStreaming && apiReady}
               editor={editor}
@@ -194,21 +199,6 @@ export function ChatComposer({
             </div>
           ) : null}
         </div>
-
-        {hasMessages ? (
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onRetry}
-              disabled={isStreaming || !messages.some((message) => message.role === "user")}
-              className="ml-auto"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-              重试
-            </Button>
-          </div>
-        ) : null}
       </div>
     </div>
   );
@@ -261,11 +251,15 @@ function ToolButton({
   disabled = true,
   icon,
   label,
+  onClick,
+  pressed,
   text,
 }: {
   disabled?: boolean;
   icon?: ReactNode;
   label: string;
+  onClick?: () => void;
+  pressed?: boolean;
   text?: string;
 }) {
   return (
@@ -275,8 +269,12 @@ function ToolButton({
       size="icon"
       aria-label={label}
       disabled={disabled}
+      onClick={onClick}
       title={disabled ? `${label}稍后支持` : label}
-      className="h-7 w-7 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+      className={cn(
+        "h-7 w-7 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground",
+        pressed && "bg-muted text-foreground",
+      )}
     >
       {icon ?? <span className="text-[13px] font-medium">{text}</span>}
     </Button>
