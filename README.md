@@ -22,6 +22,17 @@ pnpm dev
 pnpm tauri:dev
 ```
 
+Local reference Web UI:
+
+```bash
+scripts/hermes-web-ui-local.sh setup
+scripts/hermes-web-ui-local.sh dev
+```
+
+This clones `EKKOLearnAI/hermes-web-ui` into the app-managed Hermes runtime
+directory and runs it against Hermes Desktop's local `hermes-home` and bundled
+runtime. The dev UI opens at <http://localhost:8649>.
+
 Validation:
 
 ```bash

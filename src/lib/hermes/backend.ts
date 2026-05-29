@@ -7,6 +7,7 @@ import type {
   HermesRun,
   HermesSession,
   HermesStreamEvent,
+  HermesUploadedFile,
   RenameSessionInput,
   SessionChatInput,
   StartRunInput,
@@ -20,6 +21,7 @@ export interface HermesBackend {
   renameSession(input: RenameSessionInput): Promise<void>;
   deleteSession(sessionId: string): Promise<void>;
   listSessionMessages(sessionId: string): Promise<HermesMessage[]>;
+  uploadFiles(files: File[]): Promise<HermesUploadedFile[]>;
   streamSessionChat(input: SessionChatInput): AsyncIterable<HermesStreamEvent>;
   startRun(input: StartRunInput): Promise<HermesRun>;
   stopRun(runId: string): Promise<void>;

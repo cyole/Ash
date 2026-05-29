@@ -6,6 +6,7 @@ import { ChatMessageList } from "@/features/chat/components/ChatMessageList";
 import { LobeRuntimeProvider } from "@/features/chat/components/LobeRuntimeProvider";
 import { TracePanel } from "@/features/chat/components/TracePanel";
 import { useChatWorkspace } from "@/features/chat/hooks/useChatWorkspace";
+import type { ChatAttachment } from "@/features/chat/types";
 import { sessionModelLabel, sessionSource, sessionTitle } from "@/lib/hermes/session-format";
 import { cn } from "@/lib/utils";
 
@@ -53,7 +54,7 @@ export function ChatPage() {
                 selectedModel={chat.selectedModel}
                 onInputChange={chat.setInput}
                 onSelectedModelChange={chat.setSelectedModel}
-                onSend={() => void chat.sendMessage()}
+                onSend={(message: string, attachments?: ChatAttachment[]) => void chat.sendMessage(message, attachments)}
                 onStop={chat.stopStreaming}
               />
             </LobeRuntimeProvider>

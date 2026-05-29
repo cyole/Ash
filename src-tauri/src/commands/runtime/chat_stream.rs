@@ -28,7 +28,8 @@ pub(crate) fn hermes_chat_stream_impl(
 
     let api_key = read_api_server_key(&paths).ok_or("本地 API 认证未配置。")?;
     let message = input.message.trim();
-    if message.is_empty() {
+    let files = input.files.filter(|files| !files.is_empty());
+    if message.is_empty() && files.is_none() {
         return Err("消息不能为空。".to_string());
     }
 
@@ -52,7 +53,7 @@ pub(crate) fn hermes_chat_stream_impl(
         body["model"] = json!(model);
     }
 
-    if let Some(files) = input.files.filter(|files| !files.is_empty()) {
+    if let Some(files) = files {
         body["files"] = json!(files);
     }
 

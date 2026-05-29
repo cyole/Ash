@@ -42,7 +42,17 @@ export interface HermesMessage {
   role: "system" | "user" | "assistant" | "tool" | "command";
   content: unknown;
   created_at?: string | null;
+  reasoning?: string | null;
+  timestamp?: number;
+  tool_call_id?: string | null;
+  tool_calls?: unknown[] | null;
+  tool_name?: string | null;
   [key: string]: unknown;
+}
+
+export interface HermesUploadedFile {
+  name: string;
+  path: string;
 }
 
 export interface SessionChatInput {

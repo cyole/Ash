@@ -6,6 +6,12 @@ const BEARER_VALUE = /Bearer\s+[A-Za-z0-9._~+/=-]+/g;
 
 export function streamDelta(event: HermesStreamEvent) {
   const data = event.data;
+  const eventName = streamEventName(event);
+
+  if (eventName === "reasoning.delta" || eventName === "thinking.delta") {
+    return "";
+  }
+
   if (data === "[DONE]") {
     return "";
   }
@@ -68,6 +74,10 @@ export function streamFinalText(event: HermesStreamEvent) {
   }
 
   const record = data as Record<string, unknown>;
+  if (typeof record.parsed_content === "string") {
+    return record.parsed_content;
+  }
+
   const choiceMessage = readChoiceMessage(record);
   if (choiceMessage) {
     return choiceMessage;
@@ -83,11 +93,57 @@ export function streamFinalText(event: HermesStreamEvent) {
   return readNestedString(record, ["message", "content"]) ?? "";
 }
 
+export function streamReasoningDelta(event: HermesStreamEvent) {
+  const data = event.data;
+  const eventName = streamEventName(event);
+
+  if (eventName !== "reasoning.delta" && eventName !== "thinking.delta") {
+    return "";
+  }
+
+  if (typeof data === "string") {
+    return data;
+  }
+
+  if (!data || typeof data !== "object") {
+    return "";
+  }
+
+  const record = data as Record<string, unknown>;
+  if (typeof record.text === "string") {
+    return record.text;
+  }
+
+  if (typeof record.delta === "string") {
+    return record.delta;
+  }
+
+  return "";
+}
+
+export function streamFinalReasoning(event: HermesStreamEvent) {
+  const data = event.data;
+  const eventName = streamEventName(event);
+
+  if (!/completed|final|done/.test(eventName) || !data || typeof data !== "object") {
+    return "";
+  }
+
+  const record = data as Record<string, unknown>;
+  return typeof record.parsed_reasoning === "string" ? record.parsed_reasoning : "";
+}
+
 export function streamTrace(event: HermesStreamEvent): Omit<TraceItem, "id" | "createdAt"> | null {
   const data = event.data;
   const eventName = streamEventName(event);
 
-  if (eventName === "message" || eventName === "message.delta" || data === "[DONE]") {
+  if (
+    eventName === "message"
+    || eventName === "message.delta"
+    || eventName === "reasoning.delta"
+    || eventName === "thinking.delta"
+    || data === "[DONE]"
+  ) {
     return null;
   }
 
@@ -103,9 +159,10 @@ export function streamTrace(event: HermesStreamEvent): Omit<TraceItem, "id" | "c
 
 function streamEventName(event: HermesStreamEvent) {
   const data = event.data;
-  return event.type === "message" && data && typeof data === "object"
+  const name = event.type === "message" && data && typeof data === "object"
     ? String((data as Record<string, unknown>).event ?? event.type)
     : event.type;
+  return name.toLowerCase();
 }
 
 function traceDetail(data: unknown) {
@@ -132,13 +189,27 @@ function traceLabel(eventName: string) {
   const labels: Record<string, string> = {
     "message.completed": "消息完成",
     "message.delta": "消息生成中",
+    "abort.completed": "停止完成",
+    "abort.started": "正在停止",
+    "approval.requested": "等待审批",
+    "approval.resolved": "审批已处理",
+    "clarify.requested": "需要澄清",
+    "clarify.resolved": "澄清已处理",
+    "compression.completed": "上下文压缩完成",
+    "compression.started": "上下文压缩",
     "run.completed": "运行完成",
     "run.failed": "运行失败",
+    "run.queued": "已加入队列",
     "run.started": "开始运行",
     "run.stopped": "已停止",
+    "subagent.complete": "子任务完成",
+    "subagent.progress": "子任务进展",
+    "subagent.start": "子任务开始",
+    "subagent.tool": "子任务工具",
     "tool.completed": "工具完成",
     "tool.failed": "工具失败",
     "tool.started": "工具调用",
+    "usage.updated": "用量更新",
   };
 
   return labels[eventName] ?? eventName;

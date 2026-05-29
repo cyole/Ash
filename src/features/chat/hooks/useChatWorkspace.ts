@@ -3,13 +3,18 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { createId, mapHermesMessage, popPendingSessionMessage } from "@/features/chat/chat-utils";
-import { streamDelta, streamFinalText, streamTrace } from "@/features/chat/stream-events";
-import type { ChatMessage, TraceItem } from "@/features/chat/types";
+import {
+  streamDelta,
+  streamFinalReasoning,
+  streamFinalText,
+  streamReasoningDelta,
+  streamTrace,
+} from "@/features/chat/stream-events";
+import type { ChatAttachment, ChatMessage, TraceItem } from "@/features/chat/types";
 import { errorMessage, isAbortError } from "@/lib/errors";
 import { hermesQueryKeys, useHermesApi } from "@/lib/hermes/queries";
 import { sessionUpdatedAt } from "@/lib/hermes/session-format";
 import type { HermesSession } from "@/lib/hermes/types";
-import { streamHermesSessionChat } from "@/lib/tauri";
 
 export function useChatWorkspace() {
   const queryClient = useQueryClient();
@@ -22,8 +27,8 @@ export function useChatWorkspace() {
   const [selectedModel, setSelectedModel] = useState("");
   const [streamingSessionId, setStreamingSessionId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const pendingSessionUrlRef = useRef<string | null>(null);
-  const { apiKey, apiReady, apiUrl, client, tauriRuntime } = useHermesApi();
+  const internalSessionUrlIdsRef = useRef<Set<string>>(new Set());
+  const { apiKey, apiReady, apiUrl, client } = useHermesApi();
   const hasApiKey = Boolean(apiKey);
 
   const sessionsQuery = useQuery({
@@ -69,7 +74,7 @@ export function useChatWorkspace() {
   const isStreaming = streamingSessionId !== null;
 
   const setSessionUrl = useCallback((sessionId: string) => {
-    pendingSessionUrlRef.current = sessionId;
+    internalSessionUrlIdsRef.current.add(sessionId);
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
       next.set("session", sessionId);
@@ -93,15 +98,15 @@ export function useChatWorkspace() {
   useEffect(() => {
     const requestedSession = searchParams.get("session");
     if (requestedSession) {
-      if (pendingSessionUrlRef.current === requestedSession) {
-        pendingSessionUrlRef.current = null;
+      if (internalSessionUrlIdsRef.current.delete(requestedSession)) {
+        return;
       }
       selectSession(requestedSession);
       return;
     }
 
     if (activeSessionId) {
-      if (pendingSessionUrlRef.current === activeSessionId) {
+      if (internalSessionUrlIdsRef.current.delete(activeSessionId)) {
         return;
       }
 
@@ -211,9 +216,10 @@ export function useChatWorkspace() {
     }
   }
 
-  async function sendMessage(messageOverride?: string) {
+  async function sendMessage(messageOverride?: string, attachments: ChatAttachment[] = []) {
     const content = (messageOverride ?? input).trim();
-    if (!content || isStreaming) {
+    const hasAttachments = attachments.length > 0;
+    if ((!content && !hasAttachments) || isStreaming) {
       return;
     }
     if (!apiReady) {
@@ -221,20 +227,25 @@ export function useChatWorkspace() {
       return;
     }
 
-    const title = content.slice(0, 36) || "新会话";
+    const title = content.slice(0, 36) || attachmentTitle(attachments) || "新会话";
     let sessionId = activeSessionId ?? createDraftSession(title);
+    const now = Date.now();
     const userMessage: ChatMessage = {
       id: createId("user"),
       role: "user",
       content,
-      createdAt: Date.now(),
+      attachments: attachments.map((attachment) => ({
+        ...attachment,
+        uploading: Boolean(attachment.file && !attachment.path),
+      })),
+      createdAt: now,
     };
     const assistantId = createId("assistant");
     const assistantMessage: ChatMessage = {
       id: assistantId,
       role: "assistant",
       content: "",
-      createdAt: Date.now(),
+      createdAt: now,
       streaming: true,
     };
     const controller = new AbortController();
@@ -252,8 +263,6 @@ export function useChatWorkspace() {
 
     try {
       let receivedContent = false;
-      const stream = tauriRuntime ? streamHermesSessionChat : client.streamSessionChat.bind(client);
-
       if (sessionId.startsWith("draft-")) {
         const promotedSessionId = await promoteDraftSession(sessionId, title);
         if (promotedSessionId !== sessionId) {
@@ -262,14 +271,20 @@ export function useChatWorkspace() {
         }
       }
 
-      for await (const event of stream({
+      const uploadedFiles = await uploadAttachments(sessionId, userMessage.id, attachments);
+      const uploadedFilePaths = uploadedFiles.map((file) => file.path);
+
+      for await (const event of client.streamSessionChat({
         sessionId,
         message: content,
         model: selectedModel || undefined,
+        files: uploadedFilePaths.length > 0 ? uploadedFilePaths : undefined,
         signal: controller.signal,
       })) {
         const delta = streamDelta(event);
         const finalText = streamFinalText(event);
+        const reasoningDelta = streamReasoningDelta(event);
+        const finalReasoning = streamFinalReasoning(event);
 
         if (delta) {
           receivedContent = true;
@@ -287,6 +302,20 @@ export function useChatWorkspace() {
           }));
         }
 
+        if (reasoningDelta) {
+          updateMessage(sessionId, assistantId, (message) => ({
+            ...message,
+            reasoning: `${message.reasoning ?? ""}${reasoningDelta}`,
+          }));
+        }
+
+        if (finalReasoning) {
+          updateMessage(sessionId, assistantId, (message) => ({
+            ...message,
+            reasoning: finalReasoning,
+          }));
+        }
+
         const trace = streamTrace(event);
         if (trace) {
           pushTrace(sessionId, trace);
@@ -298,6 +327,7 @@ export function useChatWorkspace() {
         fallbackContent = await client.probeChatCompletion({
           message: content,
           model: selectedModel || undefined,
+          files: uploadedFilePaths.length > 0 ? uploadedFilePaths : undefined,
           signal: controller.signal,
         });
       }
@@ -319,6 +349,16 @@ export function useChatWorkspace() {
       await queryClient.invalidateQueries({ queryKey: hermesQueryKeys.sessions(apiUrl, hasApiKey) });
     } catch (error) {
       const aborted = isAbortError(error);
+      if (!aborted && hasAttachments) {
+        updateMessage(sessionId, userMessage.id, (message) => ({
+          ...message,
+          attachments: message.attachments?.map((attachment) => ({
+            ...attachment,
+            uploading: false,
+            uploadError: attachment.path ? attachment.uploadError : errorMessage(error),
+          })),
+        }));
+      }
       updateMessage(sessionId, assistantId, (message) => ({
         ...message,
         content: aborted ? message.content || "已停止本次响应。" : errorMessage(error),
@@ -344,7 +384,7 @@ export function useChatWorkspace() {
   function retryLastMessage() {
     const lastUserMessage = [...activeMessages].reverse().find((message) => message.role === "user");
     if (lastUserMessage) {
-      void sendMessage(lastUserMessage.content);
+      void sendMessage(lastUserMessage.content, lastUserMessage.attachments);
     }
   }
 
@@ -360,7 +400,7 @@ export function useChatWorkspace() {
       .find((message) => message.role === "user");
 
     if (previousUserMessage) {
-      void sendMessage(previousUserMessage.content);
+      void sendMessage(previousUserMessage.content, previousUserMessage.attachments);
     }
   }
 
@@ -422,6 +462,46 @@ export function useChatWorkspace() {
     }));
   }
 
+  async function uploadAttachments(sessionId: string, messageId: string, attachments: ChatAttachment[]) {
+    const pending = attachments.filter((attachment) => attachment.file && !attachment.path);
+    const existing = attachments
+      .filter((attachment): attachment is ChatAttachment & { path: string } => Boolean(attachment.path))
+      .map((attachment) => ({ name: attachment.name, path: attachment.path }));
+
+    if (pending.length === 0) {
+      return existing;
+    }
+
+    pushTrace(sessionId, {
+      label: "上传附件",
+      detail: pending.map((attachment) => attachment.name).join("、"),
+      status: "running",
+    });
+
+    const uploaded = await client.uploadFiles(pending.map((attachment) => attachment.file!));
+    const uploadedByName = new Map(uploaded.map((file) => [file.name, file.path]));
+
+    updateMessage(sessionId, messageId, (message) => ({
+      ...message,
+      attachments: message.attachments?.map((attachment) => {
+        const path = uploadedByName.get(attachment.name) ?? attachment.path;
+        return {
+          ...attachment,
+          path,
+          uploading: false,
+        };
+      }),
+    }));
+
+    pushTrace(sessionId, {
+      label: "附件已上传",
+      detail: `${uploaded.length} 个文件已发送给 Hermes`,
+      status: "done",
+    });
+
+    return [...existing, ...uploaded];
+  }
+
   function moveSessionState(draftId: string, session: HermesSession) {
     setDraftSessions((current) => current.filter((item) => item.id !== draftId));
     queryClient.setQueryData<HermesSession[]>(hermesQueryKeys.sessions(apiUrl, hasApiKey), (current) => [
@@ -472,4 +552,8 @@ export function useChatWorkspace() {
     setSelectedModel,
     stopStreaming,
   };
+}
+
+function attachmentTitle(attachments: ChatAttachment[]) {
+  return attachments.map((attachment) => attachment.name).join("、").slice(0, 36);
 }

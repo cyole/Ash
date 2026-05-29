@@ -8,6 +8,7 @@ import type {
   HermesRun,
   HermesSession,
   HermesStreamEvent,
+  HermesUploadedFile,
   RenameSessionInput,
   SessionChatInput,
   StartRunInput,
@@ -117,13 +118,28 @@ export class HermesApiClient implements HermesBackend {
     return normalizeMessagesResponse(response);
   }
 
+  async uploadFiles(files: File[]): Promise<HermesUploadedFile[]> {
+    if (files.length === 0) {
+      return [];
+    }
+
+    const formData = new FormData();
+    for (const file of files) {
+      formData.append("file", file, file.name);
+    }
+
+    const response = await this.request<{ files?: HermesUploadedFile[] }>("/upload", {
+      method: "POST",
+      body: formData,
+    });
+
+    return response.files ?? [];
+  }
+
   async *streamSessionChat(input: SessionChatInput): AsyncIterable<HermesStreamEvent> {
     const sessionId = input.sessionId || createDesktopSessionId();
     const response = await this.rawRequest("/v1/chat/completions", {
       method: "POST",
-      headers: {
-        "X-Hermes-Session-Id": sessionId,
-      },
       body: JSON.stringify({
         model: input.model,
         stream: true,
@@ -212,7 +228,7 @@ export class HermesApiClient implements HermesBackend {
     const headers = new Headers(init.headers);
     headers.set("Accept", headers.get("Accept") ?? "application/json");
 
-    if (init.body && !headers.has("Content-Type")) {
+    if (init.body && !headers.has("Content-Type") && !(init.body instanceof FormData)) {
       headers.set("Content-Type", "application/json");
     }
 
