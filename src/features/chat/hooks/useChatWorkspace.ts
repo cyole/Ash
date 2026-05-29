@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
 import { toast } from "sonner";
-import { createId, mapHermesMessage } from "@/features/chat/chat-utils";
+import { createId, mapHermesMessage, popPendingSessionMessage } from "@/features/chat/chat-utils";
 import { streamDelta, streamFinalText, streamTrace } from "@/features/chat/stream-events";
 import type { ChatMessage, TraceItem } from "@/features/chat/types";
 import { errorMessage, isAbortError } from "@/lib/errors";
@@ -22,6 +22,7 @@ export function useChatWorkspace() {
   const [selectedModel, setSelectedModel] = useState("");
   const [streamingSessionId, setStreamingSessionId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const pendingSessionUrlRef = useRef<string | null>(null);
   const { apiKey, apiReady, apiUrl, client, tauriRuntime } = useHermesApi();
   const hasApiKey = Boolean(apiKey);
 
@@ -42,7 +43,11 @@ export function useChatWorkspace() {
   const activeSessionIsDraft = activeSessionId?.startsWith("draft-") ?? false;
   const messagesQuery = useQuery({
     queryKey: hermesQueryKeys.sessionMessages(apiUrl, hasApiKey, activeSessionId),
-    queryFn: () => client.listSessionMessages(activeSessionId!),
+    queryFn: async () => {
+      const sessionId = activeSessionId!;
+      const messages = await client.listSessionMessages(sessionId);
+      return { messages, sessionId };
+    },
     enabled: Boolean(apiReady && activeSessionId && !activeSessionIsDraft),
     retry: false,
   });
@@ -63,6 +68,15 @@ export function useChatWorkspace() {
   const activeTraces = activeSessionId ? tracesBySession[activeSessionId] ?? [] : [];
   const isStreaming = streamingSessionId !== null;
 
+  const setSessionUrl = useCallback((sessionId: string) => {
+    pendingSessionUrlRef.current = sessionId;
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set("session", sessionId);
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
+
   const selectSession = useCallback((sessionId: string) => {
     if (sessionId === activeSessionId) {
       return;
@@ -73,33 +87,31 @@ export function useChatWorkspace() {
     }
 
     setActiveSessionId(sessionId);
+    setInput("");
   }, [activeSessionId, streamingSessionId]);
 
   useEffect(() => {
     const requestedSession = searchParams.get("session");
-    if (requestedSession && requestedSession !== activeSessionId) {
+    if (requestedSession) {
+      if (pendingSessionUrlRef.current === requestedSession) {
+        pendingSessionUrlRef.current = null;
+      }
       selectSession(requestedSession);
-    }
-  }, [activeSessionId, searchParams, selectSession]);
-
-  useEffect(() => {
-    const firstSession = sessions[0];
-    if (!activeSessionId && firstSession) {
-      setActiveSessionId(firstSession.id);
-    }
-  }, [activeSessionId, sessions]);
-
-  useEffect(() => {
-    if (!activeSessionId) {
       return;
     }
 
-    setSearchParams((current) => {
-      const next = new URLSearchParams(current);
-      next.set("session", activeSessionId);
-      return next;
-    }, { replace: true });
-  }, [activeSessionId, setSearchParams]);
+    if (activeSessionId) {
+      if (pendingSessionUrlRef.current === activeSessionId) {
+        return;
+      }
+
+      if (streamingSessionId) {
+        abortRef.current?.abort();
+      }
+      setActiveSessionId(null);
+      setInput("");
+    }
+  }, [activeSessionId, searchParams, selectSession, streamingSessionId]);
 
   useEffect(() => {
     return () => {
@@ -108,21 +120,36 @@ export function useChatWorkspace() {
   }, []);
 
   useEffect(() => {
-    if (!activeSessionId || !messagesQuery.data) {
+    if (!activeSessionId || !messagesQuery.data || messagesQuery.data.sessionId !== activeSessionId) {
       return;
     }
 
     setMessagesBySession((current) => {
-      if (current[activeSessionId]) {
+      const currentMessages = current[activeSessionId];
+      if (currentMessages?.some((message) => message.streaming)) {
+        return current;
+      }
+      if (currentMessages?.length) {
         return current;
       }
 
       return {
         ...current,
-        [activeSessionId]: messagesQuery.data.map(mapHermesMessage),
+        [activeSessionId]: messagesQuery.data.messages.map(mapHermesMessage),
       };
     });
   }, [activeSessionId, messagesQuery.data]);
+
+  useEffect(() => {
+    if (!activeSessionId || !apiReady || isStreaming) {
+      return;
+    }
+
+    const pendingMessage = popPendingSessionMessage(activeSessionId);
+    if (pendingMessage?.trim()) {
+      void sendMessage(pendingMessage);
+    }
+  }, [activeSessionId, apiReady, isStreaming]);
 
   function createDraftSession(title = "新会话") {
     const now = new Date().toISOString();
@@ -136,6 +163,7 @@ export function useChatWorkspace() {
 
     setDraftSessions((current) => [session, ...current]);
     setActiveSessionId(session.id);
+    setSessionUrl(session.id);
     return session.id;
   }
 
@@ -151,15 +179,35 @@ export function useChatWorkspace() {
         source: "desktop",
       });
       setActiveSessionId(session.id);
+      setSessionUrl(session.id);
       await queryClient.invalidateQueries({ queryKey: hermesQueryKeys.sessions(apiUrl, hasApiKey) });
       toast.success("已创建会话");
-    } catch {
+    } catch (error) {
+      console.error("Failed to create backend session", error);
       const draftId = createDraftSession();
       setMessagesBySession((current) => ({
         ...current,
         [draftId]: [],
       }));
       toast.message("后端暂不可用，已创建本地草稿会话");
+    }
+  }
+
+  async function promoteDraftSession(draftId: string, title: string) {
+    try {
+      const session = await client.createSession({
+        title,
+        source: "desktop",
+      });
+      moveSessionState(draftId, session);
+      setActiveSessionId(session.id);
+      setSessionUrl(session.id);
+      void queryClient.invalidateQueries({ queryKey: hermesQueryKeys.sessions(apiUrl, hasApiKey) });
+      return session.id;
+    } catch (error) {
+      console.error("Failed to create session for chat message", error);
+      toast.message("后端暂不可用，已创建本地草稿会话");
+      return draftId;
     }
   }
 
@@ -173,7 +221,8 @@ export function useChatWorkspace() {
       return;
     }
 
-    const sessionId = activeSessionId ?? createDraftSession(content.slice(0, 36));
+    const title = content.slice(0, 36) || "新会话";
+    let sessionId = activeSessionId ?? createDraftSession(title);
     const userMessage: ChatMessage = {
       id: createId("user"),
       role: "user",
@@ -204,6 +253,14 @@ export function useChatWorkspace() {
     try {
       let receivedContent = false;
       const stream = tauriRuntime ? streamHermesSessionChat : client.streamSessionChat.bind(client);
+
+      if (sessionId.startsWith("draft-")) {
+        const promotedSessionId = await promoteDraftSession(sessionId, title);
+        if (promotedSessionId !== sessionId) {
+          sessionId = promotedSessionId;
+          setStreamingSessionId(sessionId);
+        }
+      }
 
       for await (const event of stream({
         sessionId,
@@ -255,6 +312,9 @@ export function useChatWorkspace() {
         label: "运行完成",
         detail: "本次流式响应已结束",
         status: "done",
+      });
+      await queryClient.invalidateQueries({
+        queryKey: hermesQueryKeys.sessionMessages(apiUrl, hasApiKey, sessionId),
       });
       await queryClient.invalidateQueries({ queryKey: hermesQueryKeys.sessions(apiUrl, hasApiKey) });
     } catch (error) {
@@ -360,6 +420,34 @@ export function useChatWorkspace() {
         trace.status === "running" ? { ...trace, status } : trace,
       ),
     }));
+  }
+
+  function moveSessionState(draftId: string, session: HermesSession) {
+    setDraftSessions((current) => current.filter((item) => item.id !== draftId));
+    queryClient.setQueryData<HermesSession[]>(hermesQueryKeys.sessions(apiUrl, hasApiKey), (current) => [
+      session,
+      ...(current ?? []).filter((item) => item.id !== session.id),
+    ]);
+    setMessagesBySession((current) => {
+      const draftMessages = current[draftId] ?? [];
+      const existingMessages = current[session.id] ?? [];
+      const { [draftId]: _draftMessages, ...rest } = current;
+
+      return {
+        ...rest,
+        [session.id]: [...existingMessages, ...draftMessages],
+      };
+    });
+    setTracesBySession((current) => {
+      const draftTraces = current[draftId] ?? [];
+      const existingTraces = current[session.id] ?? [];
+      const { [draftId]: _draftTraces, ...rest } = current;
+
+      return {
+        ...rest,
+        [session.id]: [...draftTraces, ...existingTraces].slice(0, 30),
+      };
+    });
   }
 
   return {

@@ -31,6 +31,7 @@ export function ChatPage() {
           />
           <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
             <ChatMessageList
+              key={chat.activeSessionId ?? "new-session"}
               error={chat.messagesQuery.error}
               loading={chat.messagesQuery.isLoading}
               messages={chat.activeMessages}
@@ -41,6 +42,7 @@ export function ChatPage() {
           <div className="shrink-0 bg-card px-4 pb-3 pt-1.5">
             <LobeRuntimeProvider>
               <ChatComposer
+                key={chat.activeSessionId ?? "new-session"}
                 activeSession={chat.activeSession}
                 apiReady={chat.apiReady}
                 input={chat.input}

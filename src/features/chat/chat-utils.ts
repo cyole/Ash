@@ -1,6 +1,8 @@
 import type { ChatMessage, ChatRole } from "@/features/chat/types";
 import type { HermesMessage } from "@/lib/hermes/types";
 
+const pendingSessionMessagePrefix = "hermes.pendingSessionMessage.";
+
 export function mapHermesMessage(message: HermesMessage): ChatMessage {
   return {
     id: String(message.id ?? createId("message")),
@@ -24,6 +26,33 @@ export function roleLabel(role: ChatRole) {
 export function createId(prefix: string) {
   const random = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
   return `${prefix}-${random}`;
+}
+
+export function savePendingSessionMessage(sessionId: string, message: string) {
+  try {
+    window.sessionStorage.setItem(pendingSessionMessageKey(sessionId), message);
+    return true;
+  } catch (error) {
+    console.error("Failed to save pending session message", error);
+    return false;
+  }
+}
+
+export function popPendingSessionMessage(sessionId: string) {
+  const key = pendingSessionMessageKey(sessionId);
+
+  try {
+    const message = window.sessionStorage.getItem(key);
+    window.sessionStorage.removeItem(key);
+    return message;
+  } catch (error) {
+    console.error("Failed to read pending session message", error);
+    return null;
+  }
+}
+
+function pendingSessionMessageKey(sessionId: string) {
+  return `${pendingSessionMessagePrefix}${sessionId}`;
 }
 
 function messageContent(content: unknown): string {

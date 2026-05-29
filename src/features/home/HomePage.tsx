@@ -1,17 +1,24 @@
+import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Bot,
   Clock3,
   GraduationCap,
+  Loader2,
   Plus,
   RefreshCw,
   SendHorizontal,
   Sparkles,
   X,
 } from "lucide-react";
-import { Link } from "react-router";
+import { useNavigate } from "react-router";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { savePendingSessionMessage } from "@/features/chat/chat-utils";
+import { hermesQueryKeys, useHermesApi } from "@/lib/hermes/queries";
+import type { HermesSession } from "@/lib/hermes/types";
 
 const modelChips = ["DeepSeek V4 Pro", "GPT Image 2", "Seedance 2.0"];
 
@@ -34,6 +41,49 @@ const recommendedTasks = [
 ];
 
 export function HomePage() {
+  const [prompt, setPrompt] = useState("");
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { apiKey, apiReady, apiUrl, client } = useHermesApi();
+  const hasApiKey = Boolean(apiKey);
+
+  const createSession = useMutation({
+    mutationFn: async (message: string) => {
+      const session = await client.createSession({
+        title: message.slice(0, 36),
+        source: "desktop",
+      });
+      return { message, session };
+    },
+    onSuccess: ({ message, session }) => {
+      cacheCreatedSession(queryClient, hermesQueryKeys.sessions(apiUrl, hasApiKey), session);
+      const saved = savePendingSessionMessage(session.id, message);
+      setPrompt("");
+      navigate(`/chat?session=${encodeURIComponent(session.id)}`);
+      if (!saved) {
+        toast.message("已创建会话，但未能自动带入首页输入。");
+      }
+    },
+    onError: (error) => {
+      console.error("Failed to create session from home", error);
+      toast.error("创建会话失败，请稍后再试。");
+    },
+  });
+
+  function handleSubmit() {
+    const message = prompt.trim();
+    if (!message || createSession.isPending) {
+      return;
+    }
+
+    if (!apiReady) {
+      toast.message("本地 API 认证正在准备中");
+      return;
+    }
+
+    createSession.mutate(message);
+  }
+
   return (
     <div className="h-full min-h-0 overflow-auto bg-card">
       <div className="mx-auto flex min-h-full w-full max-w-[920px] flex-col px-6 pb-10 pt-16">
@@ -54,6 +104,16 @@ export function HomePage() {
         <section className="mb-3 rounded-[18px] border border-border bg-card shadow-[0_18px_50px_hsl(0_0%_0%/0.08)]">
           <Textarea
             aria-label="首页提问输入框"
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
+                return;
+              }
+
+              event.preventDefault();
+              handleSubmit();
+            }}
             className="min-h-[118px] resize-none border-0 bg-transparent px-4 py-4 text-[14px] leading-6 shadow-none focus-visible:ring-0"
             placeholder="提问、创建或开始任务。使用 @ 分配任务给其他智能体。"
           />
@@ -87,10 +147,19 @@ export function HomePage() {
               >
                 默认模型
               </Button>
-              <Button asChild size="icon" aria-label="发送" className="h-9 w-9 rounded-full">
-                <Link to="/chat">
+              <Button
+                type="button"
+                size="icon"
+                aria-label="发送"
+                disabled={!prompt.trim() || createSession.isPending}
+                onClick={handleSubmit}
+                className="h-9 w-9 rounded-full"
+              >
+                {createSession.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
                   <SendHorizontal className="h-4 w-4" />
-                </Link>
+                )}
               </Button>
             </div>
           </div>
@@ -178,4 +247,15 @@ export function HomePage() {
       </div>
     </div>
   );
+}
+
+function cacheCreatedSession(
+  queryClient: ReturnType<typeof useQueryClient>,
+  queryKey: readonly unknown[],
+  session: HermesSession,
+) {
+  queryClient.setQueryData<HermesSession[]>(queryKey, (current) => [
+    session,
+    ...(current ?? []).filter((item) => item.id !== session.id),
+  ]);
 }

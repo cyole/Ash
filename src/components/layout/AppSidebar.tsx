@@ -4,8 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import type { LucideIcon } from "lucide-react";
 import {
   BriefcaseBusiness,
-  Hash,
   FileText,
+  Hash,
   HelpCircle,
   Home,
   Library,
@@ -18,7 +18,7 @@ import {
   Workflow,
   X,
 } from "lucide-react";
-import { Link, NavLink } from "react-router";
+import { Link, NavLink, useLocation } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { hermesQueryKeys, useHermesApi } from "@/lib/hermes/queries";
@@ -34,7 +34,7 @@ interface NavItem {
 
 const workspaceNav = [
   { to: "/", label: "首页", icon: Home },
-  { to: "/chat", label: "聊天", icon: MessageSquare },
+  { to: "/chat", label: "会话", icon: MessageSquare },
   { to: "/tasks", label: "任务", icon: ListChecks },
   { to: "/jobs", label: "作业", icon: Workflow },
   { to: "/files", label: "文件", icon: FileText },
@@ -229,12 +229,17 @@ function RecentLink({
   onClick?: () => void;
   title: string;
 }) {
+  const location = useLocation();
+  const activeSessionId = new URLSearchParams(location.search).get("session");
+  const active = location.pathname === "/chat" && activeSessionId === id;
+
   return (
     <Link
       to={`/chat?session=${encodeURIComponent(id)}`}
       onClick={onClick}
       className={cn(
         "flex h-9 min-w-0 items-center gap-2.5 rounded-lg px-2 text-[13px] transition-colors hover:bg-black/5 hover:text-foreground",
+        active && "bg-black/[0.055] font-medium text-foreground",
         className,
       )}
     >

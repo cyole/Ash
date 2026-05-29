@@ -25,11 +25,15 @@ export function ChatMessageList({
 }: ChatMessageListProps) {
   const { settings } = useHermesSettings();
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const previousMessageCountRef = useRef(0);
   const lastMessage = messages.at(-1);
   const motion = messageMotion(settings.chatTransitionMode, settings.animationMode);
 
   useEffect(() => {
-    if (lastMessage?.streaming && !settings.autoScrollOnStreaming) {
+    const messageCountChanged = previousMessageCountRef.current !== messages.length;
+    previousMessageCountRef.current = messages.length;
+
+    if (!messageCountChanged && lastMessage?.streaming && !settings.autoScrollOnStreaming) {
       return;
     }
 
