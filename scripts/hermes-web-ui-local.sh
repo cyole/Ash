@@ -23,7 +23,7 @@ usage() {
 Usage: scripts/hermes-web-ui-local.sh <command>
 
 Commands:
-  setup          Clone/update dependencies without starting the UI
+  setup          Clone/install dependencies without starting the UI
   dev            Run the source dev server (frontend: $frontend_url, backend: http://localhost:8647)
   build          Build the Web UI source
   start          Start the built Web UI daemon on PORT=${port}
