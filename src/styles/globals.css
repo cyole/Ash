@@ -330,3 +330,44 @@ select {
   max-height: 360px;
   background: hsl(var(--muted));
 }
+
+.hermes-lobe-markdown-user {
+  color: hsl(var(--primary-foreground));
+}
+
+.hermes-lobe-markdown-user :where(h1, h2, h3, h4, h5, h6, p, li, strong, em) {
+  color: hsl(var(--primary-foreground));
+}
+
+.hermes-lobe-markdown-user :where(a) {
+  color: hsl(var(--primary-foreground));
+  text-decoration-color: hsl(var(--primary-foreground) / 0.7);
+}
+
+.hermes-lobe-markdown-user :where(blockquote) {
+  border-inline-start-color: hsl(var(--primary-foreground) / 0.35);
+  color: hsl(var(--primary-foreground) / 0.82);
+}
+
+.hermes-lobe-markdown-user :where(code:not(:has(span))) {
+  border-color: hsl(var(--primary-foreground) / 0.2);
+  background: hsl(var(--primary-foreground) / 0.14);
+  color: hsl(var(--primary-foreground));
+}
+
+.hermes-lobe-markdown-user :where(div:has(> table)) {
+  border-color: hsl(var(--primary-foreground) / 0.18);
+  background: hsl(var(--primary-foreground) / 0.08);
+}
+
+.hermes-lobe-markdown-user :where(table thead) {
+  background: hsl(var(--primary-foreground) / 0.12);
+}
+
+.hermes-lobe-markdown-user :where(table tr) {
+  box-shadow: inset 0 -1px 0 hsl(var(--primary-foreground) / 0.16);
+}
+
+.hermes-lobe-markdown-user :where(table th, table td) {
+  border-inline-end-color: hsl(var(--primary-foreground) / 0.16);
+}

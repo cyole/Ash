@@ -7,9 +7,10 @@ import { useHermesSettings } from "@/features/settings/settings-store";
 interface MarkdownMessageProps {
   children: string;
   streaming?: boolean;
+  tone?: "default" | "user";
 }
 
-export function MarkdownMessage({ children, streaming }: MarkdownMessageProps) {
+export function MarkdownMessage({ children, streaming, tone = "default" }: MarkdownMessageProps) {
   const { settings } = useHermesSettings();
   const hasLobeRuntime = useLobeRuntime();
   const shouldAnimate = Boolean(streaming && settings.animationMode !== "disabled");
@@ -38,7 +39,7 @@ export function MarkdownMessage({ children, streaming }: MarkdownMessageProps) {
     <div className="relative">
       <Markdown
         animated={shouldAnimate}
-        className="hermes-lobe-markdown"
+        className={tone === "user" ? "hermes-lobe-markdown hermes-lobe-markdown-user" : "hermes-lobe-markdown"}
         componentProps={componentProps}
         enableGithubAlert
         enableHtmlPreview

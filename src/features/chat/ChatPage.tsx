@@ -1,5 +1,8 @@
-import type { FormEvent, KeyboardEvent } from "react";
+import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { IEditor as LobeEditor } from "@lobehub/editor";
+import { ReactCodeblockPlugin, ReactLinkPlugin, ReactListPlugin } from "@lobehub/editor";
+import { ChatInput, Editor, useEditor } from "@lobehub/editor/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Bot,
@@ -26,7 +29,6 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { MarkdownMessage } from "@/features/chat/components/MarkdownMessage";
 import { useHermesSettings } from "@/features/settings/settings-store";
 import { errorMessage } from "@/lib/errors";
@@ -98,6 +100,7 @@ interface ToolUpdate {
 }
 
 type ActiveStreamMap = Record<string, string>;
+type DraftUpdate = string | ((current: string) => string);
 type MessagesBySession = Record<string, ChatMessage[]>;
 type QueuedPromptsBySession = Record<string, QueuedPrompt[]>;
 
@@ -114,6 +117,7 @@ const localCommands = [
   { name: "model", args: "模型 ID", insertText: "/model ", description: "临时切换模型" },
 ] as const satisfies readonly LocalCommand[];
 
+const composerEditorPlugins = [ReactListPlugin, ReactLinkPlugin, ReactCodeblockPlugin];
 const draftStorageKey = "hermes.chat.drafts.v1";
 
 const messageTransitionClasses = {
@@ -137,12 +141,15 @@ export function ChatPage() {
   const [nearBottom, setNearBottom] = useState(true);
   const [sessionsOpen, setSessionsOpen] = useState(true);
   const [activeCommandIndex, setActiveCommandIndex] = useState(0);
+  const composerEditor = useEditor();
+  const [composerReady, setComposerReady] = useState(false);
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
   const streamTokensRef = useRef<Map<string, number>>(new Map());
   const queuedPromptsRef = useRef<QueuedPromptsBySession>({});
   const selectedSessionIdRef = useRef<string | null>(null);
   const pendingInitialScrollSessionRef = useRef<string | null>(null);
   const loadedMessagesSessionRef = useRef<string | null>(null);
+  const draftChangeSourceRef = useRef<"editor" | "external">("external");
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -216,6 +223,25 @@ export function ChatPage() {
     });
   }, [settings.animationMode]);
 
+  const setComposerDraft = useCallback((next: DraftUpdate) => {
+    draftChangeSourceRef.current = "external";
+    setDraft((current) => typeof next === "function" ? next(current) : next);
+  }, []);
+
+  const updateDraftFromEditor = useCallback((editor: LobeEditor) => {
+    draftChangeSourceRef.current = "editor";
+    setDraft(readEditorMarkdown(editor));
+  }, []);
+
+  const readComposerDraft = useCallback(() => {
+    if (!composerReady) {
+      return draft;
+    }
+
+    const editorDraft = readEditorMarkdown(composerEditor);
+    return editorDraft || draft;
+  }, [composerEditor, composerReady, draft]);
+
   useEffect(() => {
     queuedPromptsRef.current = queuedPromptsBySession;
   }, [queuedPromptsBySession]);
@@ -225,9 +251,22 @@ export function ChatPage() {
   }, [selectedSessionId]);
 
   useEffect(() => {
-    setDraft(readDraft(draftKey));
+    setComposerDraft(readDraft(draftKey));
     setActiveCommandIndex(0);
-  }, [draftKey]);
+  }, [draftKey, setComposerDraft]);
+
+  useEffect(() => {
+    if (!composerReady) {
+      return;
+    }
+
+    if (draftChangeSourceRef.current === "editor") {
+      draftChangeSourceRef.current = "external";
+      return;
+    }
+
+    setEditorMarkdown(composerEditor, draft);
+  }, [composerEditor, composerReady, draft]);
 
   useEffect(() => {
     writeDraft(draftKey, draft);
@@ -331,7 +370,7 @@ export function ChatPage() {
 
   function handleNewChat() {
     setSelectedSessionId(null);
-    setDraft("");
+    setComposerDraft("");
     setSendError(null);
     setNearBottom(true);
   }
@@ -339,13 +378,13 @@ export function ChatPage() {
   function handleSubmit(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
 
-    const prompt = draft.trim();
+    const prompt = readComposerDraft().trim();
     if (!prompt) {
       return;
     }
 
     if (runLocalCommand(prompt)) {
-      setDraft("");
+      setComposerDraft("");
       return;
     }
 
@@ -359,7 +398,7 @@ export function ChatPage() {
       return;
     }
 
-    setDraft("");
+    setComposerDraft("");
     setSendError(null);
 
     if (isStreaming) {
@@ -620,47 +659,48 @@ export function ChatPage() {
   }
 
   function applyCommand(command: LocalCommand) {
-    setDraft(command.insertText);
+    setComposerDraft(command.insertText);
     setActiveCommandIndex(0);
+    window.requestAnimationFrame(() => composerEditor.focus());
   }
 
-  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+  function handleComposerKeyDown({ event }: { event: KeyboardEvent }) {
     if (showCommandMenu) {
       if (event.key === "ArrowDown") {
-        event.preventDefault();
         setActiveCommandIndex((current) => (current + 1) % filteredCommands.length);
-        return;
+        return true;
       }
 
       if (event.key === "ArrowUp") {
-        event.preventDefault();
         setActiveCommandIndex((current) => (current - 1 + filteredCommands.length) % filteredCommands.length);
-        return;
+        return true;
       }
 
       if (event.key === "Tab" || event.key === "Enter") {
-        event.preventDefault();
         const command = filteredCommands[activeCommandIndex];
         if (command) {
           applyCommand(command);
         }
-        return;
+        return true;
       }
 
       if (event.key === "Escape") {
-        event.preventDefault();
         setActiveCommandIndex(0);
-        setDraft("");
-        return;
+        setComposerDraft("");
+        return true;
       }
     }
 
-    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
-      return;
+    return false;
+  }
+
+  function handleComposerPressEnter({ event }: { event: KeyboardEvent }) {
+    if (showCommandMenu || event.shiftKey) {
+      return false;
     }
 
-    event.preventDefault();
     handleSubmit();
+    return true;
   }
 
   function handleScroll() {
@@ -781,13 +821,20 @@ export function ChatPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 bg-card">
+    <div className="relative flex h-full min-h-0 bg-background">
       {sessionsOpen ? (
-        <aside className="flex w-[288px] shrink-0 flex-col border-r border-border/70 bg-background/35">
-          <div className="border-b border-border/70 p-3">
+        <>
+        <button
+          type="button"
+          aria-label="关闭会话列表"
+          className="absolute inset-0 z-20 bg-background/45 backdrop-blur-[1px] lg:hidden"
+          onClick={() => setSessionsOpen(false)}
+        />
+        <aside className="absolute inset-y-0 left-0 z-30 flex w-[288px] shrink-0 flex-col border-r border-border/60 bg-muted/20 shadow-2xl lg:relative lg:inset-auto lg:shadow-none">
+          <div className="border-b border-border/60 p-3">
             <div className="mb-3 flex items-center justify-between gap-2">
               <div className="flex min-w-0 items-center gap-2">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-foreground shadow-sm">
                   <MessageSquare className="h-4 w-4" />
                 </span>
                 <div className="min-w-0">
@@ -817,7 +864,7 @@ export function ChatPage() {
                 </Button>
               </div>
             </div>
-            <Button type="button" className="w-full justify-center" onClick={handleNewChat}>
+            <Button type="button" className="w-full justify-center shadow-sm" onClick={handleNewChat}>
               <Plus className="h-4 w-4" />
               新对话
             </Button>
@@ -845,10 +892,11 @@ export function ChatPage() {
             )}
           </div>
         </aside>
+        </>
       ) : null}
 
-      <section className="flex min-w-0 flex-1 flex-col">
-        <header className="flex min-h-[var(--hermes-chat-header-height)] shrink-0 items-center justify-between gap-3 border-b border-border/70 px-5">
+      <section className="flex min-w-0 flex-1 flex-col bg-[linear-gradient(180deg,hsl(var(--muted)/0.28)_0%,hsl(var(--background))_22%,hsl(var(--background))_100%)]">
+        <header className="flex min-h-[var(--hermes-chat-header-height)] shrink-0 items-center justify-between gap-3 border-b border-border/60 bg-background/80 px-5 backdrop-blur">
           <div className="flex min-w-0 items-center gap-3">
             {!sessionsOpen ? (
               <Button
@@ -886,7 +934,7 @@ export function ChatPage() {
               value={modelOverride}
               onChange={(event) => setModelOverride(event.target.value)}
               placeholder={modelStatus.data?.model ?? "默认模型"}
-              className="h-8 w-[180px]"
+              className="hidden h-8 w-[180px] border-border/70 bg-background/70 sm:block"
             />
             {tauriRuntime && !runtimeReady ? (
               <Button
@@ -903,11 +951,11 @@ export function ChatPage() {
         </header>
 
         <div ref={scrollRef} onScroll={handleScroll} className="relative min-h-0 flex-1 overflow-auto">
-          <div className="mx-auto flex min-h-full w-full max-w-[860px] flex-col px-5 py-6">
+          <div className="mx-auto flex min-h-full w-full max-w-[900px] flex-col px-5 pb-8 pt-7">
             {messages.length === 0 && !sessionMessages.isLoading ? (
-              <ChatEmptyState onUsePrompt={setDraft} />
+              <ChatEmptyState onUsePrompt={setComposerDraft} />
             ) : (
-              <div className="space-y-5">
+              <div className="space-y-6">
                 {sessionMessages.isLoading && messages.length === 0 ? <MessageSkeleton /> : null}
                 {displayItems.map((item) =>
                   item.kind === "user" ? (
@@ -929,12 +977,12 @@ export function ChatPage() {
               </div>
             )}
             {isStreaming || queuedPrompts.length > 0 ? (
-            <RunStatusPanel
-              isStreaming={isStreaming}
-              queuedPrompts={queuedPrompts}
-              onCancel={() => cancelActiveStream()}
-              onRemoveQueued={removeQueuedPrompt}
-            />
+              <RunStatusPanel
+                isStreaming={isStreaming}
+                queuedPrompts={queuedPrompts}
+                onCancel={() => cancelActiveStream()}
+                onRemoveQueued={removeQueuedPrompt}
+              />
             ) : null}
             <div ref={bottomRef} className="h-1" />
           </div>
@@ -951,36 +999,14 @@ export function ChatPage() {
           ) : null}
         </div>
 
-        <form onSubmit={handleSubmit} className="shrink-0 border-t border-border/70 bg-card/95 px-5 py-4">
-          <div className="mx-auto w-full max-w-[860px]">
+        <form onSubmit={handleSubmit} className="shrink-0 bg-gradient-to-t from-background via-background/95 to-background/0 px-5 pb-4 pt-3">
+          <div className="mx-auto w-full max-w-[900px]">
             {sendError ? (
               <div className="mb-3 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm leading-5 text-destructive">
                 {sendError}
               </div>
             ) : null}
-            <div className="relative rounded-xl border border-border bg-card shadow-sm focus-within:ring-2 focus-within:ring-ring">
-              <div className="flex items-center justify-between gap-3 border-b border-border/70 px-3 py-2">
-                <div className="flex min-w-0 items-center gap-2">
-                  <button
-                    type="button"
-                    className="flex h-6 items-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                    onClick={() => setDraft((current) => current.trimStart().startsWith("/") ? current : "/")}
-                  >
-                    <ChevronDown className="h-3.5 w-3.5" />
-                    命令
-                  </button>
-                  {modelOverride.trim() ? (
-                    <Badge className="rounded-md bg-primary/10 text-primary">模型 {modelOverride.trim()}</Badge>
-                  ) : null}
-                  {queuedPrompts.length > 0 ? (
-                    <Badge className="rounded-md bg-muted text-muted-foreground">队列 {queuedPrompts.length}</Badge>
-                  ) : null}
-                </div>
-                <div className="hidden shrink-0 items-center gap-1 text-xs text-muted-foreground sm:flex">
-                  <CornerDownLeft className="h-3.5 w-3.5" />
-                  Enter 发送
-                </div>
-              </div>
+            <div className="relative">
               {showCommandMenu ? (
                 <CommandMenu
                   activeIndex={activeCommandIndex}
@@ -989,31 +1015,112 @@ export function ChatPage() {
                   onHover={setActiveCommandIndex}
                 />
               ) : null}
-              <Textarea
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={handleComposerKeyDown}
-                placeholder={runtimeReady ? "给 Hermes 发消息，输入 / 可使用本地命令" : "本地服务就绪后可以开始聊天"}
-                disabled={!apiReady || !runtimeReady}
-                className="max-h-44 min-h-[76px] resize-none border-0 bg-transparent px-4 py-3 text-[14px] leading-6 shadow-none focus-visible:ring-0"
-              />
-              <div className="flex items-center justify-between gap-3 border-t border-border/70 px-3 py-2">
-                <div className="min-w-0 truncate text-xs text-muted-foreground">
-                  {isStreaming ? "生成中发送会先加入队列。" : "Shift Enter 换行。"}
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  {isStreaming ? (
-                    <Button type="button" variant="outline" onClick={() => cancelActiveStream()}>
-                      <Square className="h-3.5 w-3.5 fill-current" />
-                      停止
-                    </Button>
-                  ) : null}
-                  <Button type="submit" disabled={!canSubmit}>
-                    <SendHorizontal className="h-4 w-4" />
-                    {isStreaming ? "加入队列" : "发送"}
-                  </Button>
-                </div>
-              </div>
+              <ChatInput
+                resize={false}
+                minHeight={84}
+                maxHeight={192}
+                onBodyClick={() => composerEditor.focus()}
+                className="!overflow-hidden !rounded-2xl !border !border-border/70 !bg-background/95 !shadow-[0_18px_55px_rgba(15,23,42,0.12)] !backdrop-blur focus-within:!border-primary/35 focus-within:!ring-2 focus-within:!ring-primary/10 dark:!shadow-[0_18px_55px_rgba(0,0,0,0.32)]"
+                classNames={{
+                  body: "!min-h-[84px] !px-0 !py-0",
+                  footer: "!px-0",
+                  header: "!px-0",
+                }}
+                styles={{
+                  body: {
+                    overflow: "auto",
+                  },
+                  footer: {
+                    width: "100%",
+                  },
+                  header: {
+                    width: "100%",
+                  },
+                }}
+                header={(
+                  <div className="flex items-center justify-between gap-3 px-3 pb-1 pt-2">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <button
+                        type="button"
+                        className="flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        onClick={() => {
+                          setComposerDraft((current) => current.trimStart().startsWith("/") ? current : "/");
+                          window.requestAnimationFrame(() => composerEditor.focus());
+                        }}
+                      >
+                        <ChevronDown className="h-3.5 w-3.5" />
+                        命令
+                      </button>
+                      {modelOverride.trim() ? (
+                        <Badge className="rounded-md border-primary/15 bg-primary/10 text-primary">模型 {modelOverride.trim()}</Badge>
+                      ) : null}
+                      {queuedPrompts.length > 0 ? (
+                        <Badge className="rounded-md bg-muted text-muted-foreground">队列 {queuedPrompts.length}</Badge>
+                      ) : null}
+                    </div>
+                    <div className="hidden shrink-0 items-center gap-1 text-xs text-muted-foreground sm:flex">
+                      <CornerDownLeft className="h-3.5 w-3.5" />
+                      Enter 发送
+                    </div>
+                  </div>
+                )}
+                footer={(
+                  <div className="flex items-center justify-between gap-3 px-3 pb-3 pt-1">
+                    <div className="min-w-0 truncate text-xs text-muted-foreground">
+                      {isStreaming ? "正在生成，新的消息会加入队列。" : "支持富文本粘贴，Shift Enter 换行"}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {isStreaming ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          aria-label="停止生成"
+                          className="h-9 w-9"
+                          onClick={() => cancelActiveStream()}
+                        >
+                          <Square className="h-3.5 w-3.5 fill-current" />
+                        </Button>
+                      ) : null}
+                      <Button
+                        type="submit"
+                        size="icon"
+                        aria-label={isStreaming ? "加入队列" : "发送"}
+                        className="h-9 w-9"
+                        disabled={!canSubmit}
+                      >
+                        <SendHorizontal className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              >
+                <Editor
+                  autoFormatMarkdown
+                  content={draft}
+                  debounceWait={0}
+                  editable={apiReady && runtimeReady}
+                  editor={composerEditor}
+                  enablePasteMarkdown
+                  markdownOption
+                  onChange={updateDraftFromEditor}
+                  onInit={() => setComposerReady(true)}
+                  onKeyDown={handleComposerKeyDown}
+                  onPressEnter={handleComposerPressEnter}
+                  onTextChange={updateDraftFromEditor}
+                  pasteMarkdownAutoConvertThreshold={3}
+                  placeholder={runtimeReady ? "给 Hermes 发消息，输入 / 可使用本地命令" : "本地服务就绪后可以开始聊天"}
+                  plugins={composerEditorPlugins}
+                  type="text"
+                  variant="chat"
+                  className="min-h-[84px] max-h-48 px-4 py-2 text-[15px] leading-6 text-foreground outline-none [&_[contenteditable]]:min-h-[72px] [&_[contenteditable]]:outline-none"
+                  theme={{
+                    fontSize: 15,
+                    lineHeight: 1.55,
+                    marginMultiple: 0.45,
+                  }}
+                />
+              </ChatInput>
             </div>
           </div>
         </form>
@@ -1038,8 +1145,8 @@ function SessionButton({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex w-full flex-col items-start rounded-lg px-3 py-2 text-left transition-colors hover:bg-card",
-        active && "bg-card shadow-sm ring-1 ring-border",
+        "flex w-full flex-col items-start rounded-lg px-3 py-2 text-left transition-colors hover:bg-background/70",
+        active && "bg-background shadow-sm ring-1 ring-border/70",
       )}
     >
       <span className="flex w-full min-w-0 items-center gap-2">
@@ -1090,7 +1197,7 @@ function AssistantTurnRow({
       <div className="min-w-0 max-w-[calc(100%-44px)] flex-1">
         <div
           className={cn(
-            "rounded-xl border border-border bg-background/45 px-4 py-3 text-foreground shadow-sm",
+            "rounded-2xl border border-border/70 bg-background/75 px-4 py-3 text-foreground shadow-sm",
             errors.length > 0 && "border-destructive/30 bg-destructive/5",
           )}
         >
@@ -1168,10 +1275,10 @@ function ChatMessageRow({
       <div className={cn("min-w-0 max-w-[78%]", !isUser && "max-w-[calc(100%-44px)] flex-1")}>
         <div
           className={cn(
-            "rounded-xl px-4 py-3 shadow-sm",
+            "rounded-2xl px-4 py-3 shadow-sm",
             isUser
-              ? "bg-primary text-primary-foreground"
-              : "border border-border bg-background/45 text-foreground",
+              ? "bg-primary text-primary-foreground shadow-primary/15"
+              : "border border-border/70 bg-background/75 text-foreground",
             message.status === "error" && "border-destructive/30 bg-destructive/5",
           )}
         >
@@ -1193,7 +1300,7 @@ function ChatMessageRow({
             </div>
           ) : null}
           {isUser ? (
-            <p className="whitespace-pre-wrap text-[14px] leading-6">{message.content}</p>
+            <MarkdownMessage tone="user">{message.content}</MarkdownMessage>
           ) : (
             <>
               {reasoningText.trim() ? (
@@ -1231,10 +1338,10 @@ function ThinkingBlock({ content, streaming }: { content: string; streaming: boo
   const characterCount = [...content].length;
 
   return (
-    <div className="mb-3 overflow-hidden rounded-lg border border-border bg-muted/35">
+    <div className="mb-3 overflow-hidden rounded-lg border border-border/70 bg-muted/25">
       <button
         type="button"
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted"
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/70"
         onClick={() => setExpandedOverride((current) => !(current ?? false))}
       >
         {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
@@ -1243,7 +1350,7 @@ function ThinkingBlock({ content, streaming }: { content: string; streaming: boo
         <span className="ml-auto tabular-nums">{characterCount} 字</span>
       </button>
       {expanded ? (
-        <div className="border-t border-border px-3 py-2 text-xs leading-5 text-muted-foreground">
+        <div className="border-t border-border/70 px-3 py-2 text-xs leading-5 text-muted-foreground">
           <MarkdownMessage>{content}</MarkdownMessage>
         </div>
       ) : null}
@@ -1278,10 +1385,10 @@ function ToolTraceList({ messages }: { messages: ChatMessage[] }) {
       : "调用完成";
 
   return (
-    <div className="mb-3 overflow-hidden rounded-lg border border-border bg-muted/25">
+    <div className="mb-3 overflow-hidden rounded-lg border border-border/70 bg-muted/20">
       <button
         type="button"
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted"
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/70"
         onClick={() => setExpandedOverride((current) => !(current ?? false))}
       >
         {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
@@ -1291,13 +1398,13 @@ function ToolTraceList({ messages }: { messages: ChatMessage[] }) {
         <span className="ml-auto">{statusText}</span>
       </button>
       {expanded ? (
-        <div className="space-y-1 border-t border-border p-2">
+        <div className="space-y-1 border-t border-border/70 p-2">
           {messages.map((message) => (
             <ToolTraceItem key={message.id} message={message} />
           ))}
         </div>
       ) : latestMessage ? (
-        <div className="border-t border-border px-3 py-2 text-xs leading-5 text-muted-foreground">
+        <div className="border-t border-border/70 px-3 py-2 text-xs leading-5 text-muted-foreground">
           <span className="font-medium text-foreground">{toolDisplayName(latestMessage.toolName)}</span>
           {latestMessage.toolPreview ? <span>：{latestMessage.toolPreview}</span> : null}
         </div>
@@ -1315,10 +1422,10 @@ function ToolTraceItem({ message }: { message: ChatMessage }) {
     <div className="rounded-lg px-1 py-1 text-muted-foreground">
       <button
         type="button"
-        className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted/60"
+        className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-background/70"
         onClick={() => hasDetails && setExpanded((current) => !current)}
       >
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground shadow-sm">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border/70 bg-background text-muted-foreground shadow-sm">
           {hasDetails
             ? expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />
             : <Wrench className="h-3.5 w-3.5" />}
@@ -1326,7 +1433,7 @@ function ToolTraceItem({ message }: { message: ChatMessage }) {
         <Wrench className="h-4 w-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate font-medium">{toolDisplayName(message.toolName)}</span>
         <Badge className={cn(
-          "shrink-0 rounded-md border-border bg-background text-[11px] text-muted-foreground",
+          "shrink-0 rounded-md border-border/70 bg-background text-[11px] text-muted-foreground",
           message.toolStatus === "running" && "text-emerald-600 dark:text-emerald-300",
           message.toolStatus === "error" && "border-destructive/20 bg-destructive/10 text-destructive",
         )}>
@@ -1412,16 +1519,16 @@ function RunStatusPanel({
   queuedPrompts: QueuedPrompt[];
 }) {
   return (
-    <div className="ml-11 mt-5 max-w-[560px] rounded-xl border border-border bg-card p-3 shadow-sm">
+    <div className="ml-11 mt-5 max-w-[560px] rounded-lg border border-border/70 bg-background/70 p-3 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <span className={cn("h-2 w-2 rounded-full", isStreaming ? "animate-pulse bg-emerald-500" : "bg-muted-foreground")} />
           <div className="min-w-0">
             <div className="truncate text-[13px] font-medium text-foreground">
-              {isStreaming ? "正在接收流式响应" : "等待下一条消息"}
+              {isStreaming ? "正在生成" : "等待下一条消息"}
             </div>
             <div className="mt-0.5 text-xs text-muted-foreground">
-              {queuedPrompts.length > 0 ? `${queuedPrompts.length} 条消息在队列中` : "响应完成后会自动同步会话。"}
+              {queuedPrompts.length > 0 ? `${queuedPrompts.length} 条消息在队列中` : "完成后会同步会话。"}
             </div>
           </div>
         </div>
@@ -1433,9 +1540,9 @@ function RunStatusPanel({
         ) : null}
       </div>
       {queuedPrompts.length > 0 ? (
-        <div className="mt-3 space-y-2 border-t border-border pt-3">
+        <div className="mt-3 space-y-2 border-t border-border/70 pt-3">
           {queuedPrompts.map((prompt, index) => (
-            <div key={prompt.id} className="flex items-center gap-2 rounded-lg bg-muted/55 px-2 py-2">
+            <div key={prompt.id} className="flex items-center gap-2 rounded-lg bg-muted/45 px-2 py-2">
               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-card text-[11px] text-muted-foreground">
                 {index + 1}
               </span>
@@ -1462,10 +1569,10 @@ function ChatEmptyState({ onUsePrompt }: { onUsePrompt: (prompt: string) => void
   return (
     <div className="flex flex-1 items-center justify-center py-12">
       <div className="w-full max-w-[620px] text-center">
-        <div className="mx-auto mb-5 flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+        <div className="mx-auto mb-5 flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-background text-foreground shadow-sm">
           <Sparkles className="h-5 w-5" />
         </div>
-        <h2 className="text-[21px] font-semibold tracking-normal">今天想让 Hermes 做什么？</h2>
+        <h2 className="text-[22px] font-semibold tracking-normal">今天想让 Hermes 做什么？</h2>
         <p className="mx-auto mt-2 max-w-[480px] text-sm leading-6 text-muted-foreground">
           可以从一个问题、一个目标，或一段需要整理的上下文开始。
         </p>
@@ -1475,7 +1582,7 @@ function ChatEmptyState({ onUsePrompt }: { onUsePrompt: (prompt: string) => void
               key={prompt}
               type="button"
               onClick={() => onUsePrompt(prompt)}
-              className="rounded-lg border border-border bg-card px-3 py-3 text-[13px] leading-5 text-foreground shadow-sm transition-colors hover:bg-muted"
+              className="rounded-lg border border-border/70 bg-background/80 px-3 py-3 text-[13px] leading-5 text-foreground shadow-sm transition-colors hover:bg-muted/60"
             >
               {prompt}
             </button>
@@ -2343,6 +2450,28 @@ function titleFromPrompt(prompt: string): string {
 function normalizedModelOverride(model: string): string | undefined {
   const normalized = model.trim();
   return normalized || undefined;
+}
+
+function readEditorMarkdown(editor: LobeEditor): string {
+  try {
+    const content = editor.getDocument("markdown");
+    return typeof content === "string" ? content : "";
+  } catch {
+    return "";
+  }
+}
+
+function setEditorMarkdown(editor: LobeEditor, markdown: string) {
+  try {
+    if (markdown.trim()) {
+      editor.setDocument("markdown", markdown);
+      return;
+    }
+
+    editor.cleanDocument();
+  } catch (error) {
+    console.error("Failed to sync chat editor content", error);
+  }
 }
 
 function draftStorageSessionKey(sessionId: string | null): string {
