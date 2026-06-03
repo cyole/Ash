@@ -7,6 +7,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 const ExtensionsPage = lazy(() =>
   import("@/features/extensions/ExtensionsPage").then(({ ExtensionsPage }) => ({ default: ExtensionsPage })),
 );
+const ChatPage = lazy(() => import("@/features/chat/ChatPage").then(({ ChatPage }) => ({ default: ChatPage })));
 const FilesPage = lazy(() => import("@/features/files/FilesPage").then(({ FilesPage }) => ({ default: FilesPage })));
 const HomePage = lazy(() => import("@/features/home/HomePage").then(({ HomePage }) => ({ default: HomePage })));
 const JobsPage = lazy(() => import("@/features/jobs/JobsPage").then(({ JobsPage }) => ({ default: JobsPage })));
@@ -29,6 +30,7 @@ export const router = createHashRouter([
     element: <AppLayout />,
     children: [
       { index: true, element: routeElement(<HomePage />) },
+      { path: "chat", element: routeElement(<ChatPage />) },
       { path: "tasks", element: routeElement(<TasksPage />) },
       { path: "jobs", element: routeElement(<JobsPage />) },
       { path: "files", element: routeElement(<FilesPage />) },

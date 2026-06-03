@@ -7,6 +7,7 @@ import {
   Home,
   Library,
   ListChecks,
+  MessageSquare,
   PackageSearch,
   Settings,
   Workflow,
@@ -22,6 +23,7 @@ interface NavItem {
 
 const workspaceNav = [
   { to: "/", label: "首页", icon: Home },
+  { to: "/chat", label: "聊天", icon: MessageSquare },
   { to: "/tasks", label: "任务", icon: ListChecks },
   { to: "/jobs", label: "作业", icon: Workflow },
   { to: "/files", label: "文件", icon: FileText },
