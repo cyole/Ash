@@ -1,18 +1,8 @@
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import {
-  BriefcaseBusiness,
-  FileText,
-  HelpCircle,
-  Home,
-  Library,
-  ListChecks,
-  MessageSquare,
-  PackageSearch,
-  Settings,
-  Workflow,
-} from "lucide-react";
-import { NavLink } from "react-router";
+import { ArrowLeft, ArrowRight, Clock3, PackageSearch, PenLine, Search, Settings } from "lucide-react";
+import { NavLink, useNavigate } from "react-router";
+import { ChatSessionsSidebar } from "@/features/chat/components/ChatSessionsSidebar";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -21,66 +11,68 @@ interface NavItem {
   icon: LucideIcon;
 }
 
-const workspaceNav = [
-  { to: "/", label: "首页", icon: Home },
-  { to: "/chat", label: "聊天", icon: MessageSquare },
-  { to: "/tasks", label: "任务", icon: ListChecks },
-  { to: "/jobs", label: "作业", icon: Workflow },
-  { to: "/files", label: "文件", icon: FileText },
+const quickNav = [
+  { to: "/", label: "新对话", icon: PenLine },
+  { to: "/files", label: "搜索", icon: Search },
+  { to: "/extensions", label: "插件", icon: PackageSearch },
+  { to: "/tasks", label: "自动化", icon: Clock3 },
 ] satisfies NavItem[];
 
-const resourceNav = [
-  { to: "/models", label: "模型", icon: Library },
-  { to: "/extensions", label: "扩展", icon: PackageSearch },
-  { to: "/settings", label: "设置", icon: Settings },
-] satisfies NavItem[];
+const settingsNav = { to: "/settings", label: "设置", icon: Settings } satisfies NavItem;
 
 export function AppSidebar() {
+  const navigate = useNavigate();
+
   return (
-    <aside className="relative flex h-full w-[var(--hermes-sidebar-width)] shrink-0 flex-col bg-sidebar px-3 pb-3 pt-3.5 text-[#696969]">
-      <div className="mb-4 flex items-center gap-2.5 px-1">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[linear-gradient(135deg,#111,#555)] text-white shadow-sm">
-          <BriefcaseBusiness className="h-4 w-4" />
-        </div>
-        <div className="min-w-0">
-          <div className="truncate text-[14px] font-semibold text-foreground">Hermes</div>
-          <div className="truncate text-[11px] text-muted-foreground">Desktop workspace</div>
-        </div>
+    <aside className="relative flex h-full w-[var(--hermes-sidebar-width)] shrink-0 select-none flex-col overflow-hidden bg-sidebar px-3 pb-3 pt-[calc(var(--hermes-titlebar-height)+8px)] text-muted-foreground">
+      <div
+        className="absolute inset-x-0 top-0 flex h-[var(--hermes-titlebar-height)] items-center justify-end gap-1 pr-4 text-muted-foreground/80"
+        data-tauri-drag-region="deep"
+      >
+        <SidebarNavigationButton label="返回" onClick={() => navigate(-1)}>
+          <ArrowLeft className="h-4 w-4" />
+        </SidebarNavigationButton>
+        <SidebarNavigationButton label="前进" onClick={() => navigate(1)}>
+          <ArrowRight className="h-4 w-4" />
+        </SidebarNavigationButton>
       </div>
 
-      <SidebarSection title="工作台">
-        {workspaceNav.map((item) => (
+      <nav className="shrink-0 space-y-0.5" aria-label="快捷入口">
+        {quickNav.map((item) => (
           <SidebarLink key={item.to} item={item} />
         ))}
-      </SidebarSection>
+      </nav>
 
-      <SidebarSection title="配置" className="mt-4">
-        {resourceNav.map((item) => (
-          <SidebarLink key={item.to} item={item} />
-        ))}
-      </SidebarSection>
+      <div className="mt-4 min-h-0 flex-1">
+        <ChatSessionsSidebar />
+      </div>
 
-      <div className="mt-auto px-1">
-        <HelpCircle className="h-[18px] w-[18px] text-muted-foreground" />
+      <div className="shrink-0 pt-2">
+        <SidebarLink item={settingsNav} />
       </div>
     </aside>
   );
 }
 
-function SidebarSection({
+function SidebarNavigationButton({
   children,
-  className,
-  title,
+  label,
+  onClick,
 }: {
   children: ReactNode;
-  className?: string;
-  title: string;
+  label: string;
+  onClick: () => void;
 }) {
   return (
-    <nav className={cn("space-y-0.5", className)} aria-label={title}>
-      <div className="mb-2 px-1 text-[11px] font-medium text-muted-foreground">{title}</div>
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-black/[0.04] hover:text-foreground"
+    >
       {children}
-    </nav>
+    </button>
   );
 }
 
@@ -91,8 +83,8 @@ function SidebarLink({ item }: { item: NavItem }) {
       end={item.to === "/"}
       className={({ isActive }) =>
         cn(
-          "flex h-9 items-center gap-2.5 rounded-lg px-2 text-[13px] transition-colors hover:bg-black/5 hover:text-foreground",
-          isActive && "bg-black/[0.055] font-medium text-foreground",
+          "flex h-9 items-center gap-2.5 rounded-lg px-2 text-[13px] transition-colors hover:bg-black/[0.04] hover:text-foreground",
+          isActive && "font-medium text-foreground",
         )
       }
     >

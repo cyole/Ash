@@ -3,21 +3,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { IEditor as LobeEditor } from "@lobehub/editor";
 import { ReactCodeblockPlugin, ReactLinkPlugin, ReactListPlugin } from "@lobehub/editor";
 import { ChatInput, Editor, useEditor } from "@lobehub/editor/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Bot,
   Brain,
-  CheckCircle2,
   ChevronDown,
   ChevronRight,
   Copy,
   CornerDownLeft,
   Loader2,
-  MessageSquare,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Plus,
-  RefreshCcw,
   SendHorizontal,
   Sparkles,
   Square,
@@ -25,21 +19,18 @@ import {
   UserRound,
   Wrench,
 } from "lucide-react";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { chatPathForSession, chatSessionSearchParam, readPendingChatPrompt } from "@/features/chat/chat-route";
 import { MarkdownMessage } from "@/features/chat/components/MarkdownMessage";
 import { useHermesSettings } from "@/features/settings/settings-store";
 import { errorMessage } from "@/lib/errors";
 import type { HermesMessage, HermesSession, HermesStreamEvent } from "@/lib/hermes";
 import { hermesQueryKeys, useHermesApi } from "@/lib/hermes/queries";
 import { cn } from "@/lib/utils";
-import {
-  getModelConfigStatus,
-  startGateway,
-  streamHermesSessionChat,
-} from "@/lib/tauri";
+import { streamHermesSessionChat } from "@/lib/tauri";
 
 interface ChatMessage {
   id: string;
@@ -99,6 +90,10 @@ interface ToolUpdate {
   toolArgs?: string;
 }
 
+interface SendPromptOptions {
+  forceNewSession?: boolean;
+}
+
 type ActiveStreamMap = Record<string, string>;
 type DraftUpdate = string | ((current: string) => string);
 type MessagesBySession = Record<string, ChatMessage[]>;
@@ -128,10 +123,12 @@ const messageTransitionClasses = {
 
 export function ChatPage() {
   const queryClient = useQueryClient();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { settings } = useHermesSettings();
   const { apiKey, apiReady, apiUrl, client, status, tauriRuntime } = useHermesApi();
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-  const [selectionInitialized, setSelectionInitialized] = useState(false);
+  const selectedSessionId = searchParams.get(chatSessionSearchParam);
   const [messagesBySession, setMessagesBySession] = useState<MessagesBySession>({});
   const [draft, setDraft] = useState("");
   const [modelOverride, setModelOverride] = useState("");
@@ -139,11 +136,11 @@ export function ChatPage() {
   const [queuedPromptsBySession, setQueuedPromptsBySession] = useState<QueuedPromptsBySession>({});
   const [sendError, setSendError] = useState<string | null>(null);
   const [nearBottom, setNearBottom] = useState(true);
-  const [sessionsOpen, setSessionsOpen] = useState(true);
   const [activeCommandIndex, setActiveCommandIndex] = useState(0);
   const composerEditor = useEditor();
   const [composerReady, setComposerReady] = useState(false);
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
+  const handledPendingPromptRef = useRef<string | null>(null);
   const streamTokensRef = useRef<Map<string, number>>(new Map());
   const queuedPromptsRef = useRef<QueuedPromptsBySession>({});
   const selectedSessionIdRef = useRef<string | null>(null);
@@ -165,30 +162,6 @@ export function ChatPage() {
     queryFn: () => selectedSessionId ? client.listSessionMessages(selectedSessionId) : Promise.resolve([]),
   });
 
-  const modelStatus = useQuery({
-    queryKey: hermesQueryKeys.modelConfigStatus,
-    queryFn: getModelConfigStatus,
-  });
-
-  const startRuntime = useMutation({
-    mutationFn: startGateway,
-    onSuccess: (result) => {
-      void queryClient.invalidateQueries({ queryKey: hermesQueryKeys.runtimeStatus });
-      if (result.success) {
-        toast.success("本地服务已启动");
-      } else {
-        toast.error(result.stderr || result.stdout || "本地服务启动需要处理");
-      }
-    },
-    onError: (error) => {
-      toast.error(errorMessage(error));
-    },
-  });
-
-  const selectedSession = useMemo(
-    () => sessions.data?.find((session) => session.id === selectedSessionId) ?? null,
-    [selectedSessionId, sessions.data],
-  );
   const runtimeReady = !tauriRuntime || Boolean(status.data?.running && status.data.apiKeyConfigured);
   const messages = selectedSessionId ? messagesBySession[selectedSessionId] ?? [] : [];
   const activeStreamId = selectedSessionId ? activeStreams[selectedSessionId] ?? null : null;
@@ -196,7 +169,6 @@ export function ChatPage() {
   const isStreaming = activeStreamId !== null;
   const displayItems = useMemo(() => buildChatDisplayItems(messages), [messages]);
   const canSubmit = Boolean(draft.trim() && apiReady && runtimeReady);
-  const visibleTitle = selectedSession ? sessionTitle(selectedSession) : "新对话";
   const draftKey = draftStorageSessionKey(selectedSessionId);
   const slashCommandQuery = useMemo(() => {
     const trimmed = draft.trimStart();
@@ -222,6 +194,10 @@ export function ChatPage() {
       block: "end",
     });
   }, [settings.animationMode]);
+
+  const setSelectedSession = useCallback((sessionId: string | null, replace = false) => {
+    navigate(chatPathForSession(sessionId), { replace, state: null });
+  }, [navigate]);
 
   const setComposerDraft = useCallback((next: DraftUpdate) => {
     draftChangeSourceRef.current = "external";
@@ -278,15 +254,6 @@ export function ChatPage() {
     }
     setActiveCommandIndex(0);
   }, [activeCommandIndex, filteredCommands.length]);
-
-  useEffect(() => {
-    if (selectionInitialized || sessions.isLoading) {
-      return;
-    }
-
-    setSelectedSessionId(sessions.data?.[0]?.id ?? null);
-    setSelectionInitialized(true);
-  }, [selectionInitialized, sessions.data, sessions.isLoading]);
 
   useEffect(() => {
     if (!selectedSessionId) {
@@ -363,13 +330,8 @@ export function ChatPage() {
     );
   }, []);
 
-  function handleSelectSession(sessionId: string) {
-    setSelectedSessionId(sessionId);
-    setSendError(null);
-  }
-
   function handleNewChat() {
-    setSelectedSessionId(null);
+    setSelectedSession(null);
     setComposerDraft("");
     setSendError(null);
     setNearBottom(true);
@@ -411,7 +373,7 @@ export function ChatPage() {
     void sendPrompt(prompt, selectedSessionId ?? undefined);
   }
 
-  async function sendPrompt(prompt: string, preferredSessionId?: string) {
+  async function sendPrompt(prompt: string, preferredSessionId?: string, options: SendPromptOptions = {}) {
     setSendError(null);
 
     const now = Date.now();
@@ -430,7 +392,7 @@ export function ChatPage() {
       status: "streaming",
     };
 
-    let sessionIdForRun = preferredSessionId ?? selectedSessionIdRef.current;
+    let sessionIdForRun = options.forceNewSession ? null : preferredSessionId ?? selectedSessionIdRef.current;
     let token = 0;
     let shouldRunQueuedPrompt = false;
 
@@ -803,7 +765,7 @@ export function ChatPage() {
       source: "desktop-chat",
       title: titleFromPrompt(prompt),
     });
-    setSelectedSessionId(session.id);
+    setSelectedSession(session.id, true);
     queryClient.setQueryData<HermesSession[]>(
       hermesQueryKeys.sessions(apiUrl, Boolean(apiKey)),
       (current) => mergeSession(current, session),
@@ -820,136 +782,27 @@ export function ChatPage() {
     ]);
   }
 
+  useEffect(() => {
+    const pendingPrompt = readPendingChatPrompt(location.state);
+    if (!pendingPrompt) {
+      return;
+    }
+
+    const pendingKey = `${location.key}:${pendingPrompt}`;
+    if (handledPendingPromptRef.current === pendingKey) {
+      return;
+    }
+
+    handledPendingPromptRef.current = pendingKey;
+    navigate(chatPathForSession(null), { replace: true, state: null });
+    setComposerDraft("");
+    setSendError(null);
+    void sendPrompt(pendingPrompt, undefined, { forceNewSession: true });
+  }, [location.key, location.state, navigate, setComposerDraft]);
+
   return (
-    <div className="relative flex h-full min-h-0 bg-background">
-      {sessionsOpen ? (
-        <>
-        <button
-          type="button"
-          aria-label="关闭会话列表"
-          className="absolute inset-0 z-20 bg-background/45 backdrop-blur-[1px] lg:hidden"
-          onClick={() => setSessionsOpen(false)}
-        />
-        <aside className="absolute inset-y-0 left-0 z-30 flex w-[288px] shrink-0 flex-col border-r border-border/60 bg-muted/20 shadow-2xl lg:relative lg:inset-auto lg:shadow-none">
-          <div className="border-b border-border/60 p-3">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-foreground shadow-sm">
-                  <MessageSquare className="h-4 w-4" />
-                </span>
-                <div className="min-w-0">
-                  <h1 className="truncate text-[15px] font-semibold">聊天</h1>
-                  <p className="truncate text-xs text-muted-foreground">{sessions.data?.length ?? 0} 个会话</p>
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label="刷新会话"
-                  onClick={() => sessions.refetch()}
-                  disabled={sessions.isFetching}
-                >
-                  {sessions.isFetching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCcw className="h-3.5 w-3.5" />}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label="收起会话列表"
-                  onClick={() => setSessionsOpen(false)}
-                >
-                  <PanelLeftClose className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
-            <Button type="button" className="w-full justify-center shadow-sm" onClick={handleNewChat}>
-              <Plus className="h-4 w-4" />
-              新对话
-            </Button>
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-auto p-2">
-            {sessions.isLoading ? (
-              <SessionListSkeleton />
-            ) : sessions.isError ? (
-              <InlineNotice tone="danger" title="会话加载失败" description={errorMessage(sessions.error)} />
-            ) : sessions.data?.length ? (
-              <div className="space-y-1">
-                {sessions.data.map((session) => (
-                  <SessionButton
-                    key={session.id}
-                    active={session.id === selectedSessionId}
-                    session={session}
-                    streaming={Boolean(activeStreams[session.id])}
-                    onClick={() => handleSelectSession(session.id)}
-                  />
-                ))}
-              </div>
-            ) : (
-              <InlineNotice title="还没有会话" description="新的对话会在发送后保存到这里。" />
-            )}
-          </div>
-        </aside>
-        </>
-      ) : null}
-
+    <div className="flex h-full min-h-0 bg-background">
       <section className="flex min-w-0 flex-1 flex-col bg-[linear-gradient(180deg,hsl(var(--muted)/0.28)_0%,hsl(var(--background))_22%,hsl(var(--background))_100%)]">
-        <header className="flex min-h-[var(--hermes-chat-header-height)] shrink-0 items-center justify-between gap-3 border-b border-border/60 bg-background/80 px-5 backdrop-blur">
-          <div className="flex min-w-0 items-center gap-3">
-            {!sessionsOpen ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label="展开会话列表"
-                onClick={() => setSessionsOpen(true)}
-              >
-                <PanelLeftOpen className="h-4 w-4" />
-              </Button>
-            ) : null}
-            <div className="min-w-0">
-              <div className="flex min-w-0 items-center gap-2">
-                <h2 className="truncate text-[15px] font-semibold">{visibleTitle}</h2>
-                <RuntimeBadge
-                  configured={status.data?.apiKeyConfigured}
-                  loading={status.isLoading}
-                  running={runtimeReady}
-                  tauriRuntime={tauriRuntime}
-                />
-              </div>
-              <p className="mt-1 truncate text-xs text-muted-foreground">
-                {modelOverride.trim()
-                  ? `临时模型 ${modelOverride.trim()}`
-                  : modelStatus.data?.model
-                    ? `默认模型 ${modelStatus.data.model}`
-                    : "使用 Hermes 当前默认模型"}
-              </p>
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <Input
-              aria-label="模型覆盖"
-              value={modelOverride}
-              onChange={(event) => setModelOverride(event.target.value)}
-              placeholder={modelStatus.data?.model ?? "默认模型"}
-              className="hidden h-8 w-[180px] border-border/70 bg-background/70 sm:block"
-            />
-            {tauriRuntime && !runtimeReady ? (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => startRuntime.mutate()}
-                disabled={startRuntime.isPending}
-              >
-                {startRuntime.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                启动服务
-              </Button>
-            ) : null}
-          </div>
-        </header>
-
         <div ref={scrollRef} onScroll={handleScroll} className="relative min-h-0 flex-1 overflow-auto">
           <div className="mx-auto flex min-h-full w-full max-w-[900px] flex-col px-5 pb-8 pt-7">
             {messages.length === 0 && !sessionMessages.isLoading ? (
@@ -991,7 +844,7 @@ export function ChatPage() {
             <Button
               type="button"
               variant="outline"
-            className="absolute bottom-4 left-1/2 h-8 -translate-x-1/2 rounded-full bg-card/95 shadow-md"
+              className="absolute bottom-4 left-1/2 h-8 -translate-x-1/2 rounded-full bg-card/95 shadow-md"
               onClick={() => scrollToBottom("smooth")}
             >
               回到底部
@@ -1126,39 +979,6 @@ export function ChatPage() {
         </form>
       </section>
     </div>
-  );
-}
-
-function SessionButton({
-  active,
-  onClick,
-  session,
-  streaming,
-}: {
-  active: boolean;
-  onClick: () => void;
-  session: HermesSession;
-  streaming: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "flex w-full flex-col items-start rounded-lg px-3 py-2 text-left transition-colors hover:bg-background/70",
-        active && "bg-background shadow-sm ring-1 ring-border/70",
-      )}
-    >
-      <span className="flex w-full min-w-0 items-center gap-2">
-        <span className="line-clamp-1 min-w-0 flex-1 text-[13px] font-medium leading-5 text-foreground">
-          {sessionTitle(session)}
-        </span>
-        {streaming ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-emerald-600 dark:text-emerald-300" /> : null}
-      </span>
-      <span className="mt-0.5 text-xs text-muted-foreground">
-        {streaming ? "正在生成" : formatSessionTime(session.updated_at ?? session.created_at)}
-      </span>
-    </button>
   );
 }
 
@@ -1589,81 +1409,6 @@ function ChatEmptyState({ onUsePrompt }: { onUsePrompt: (prompt: string) => void
           ))}
         </div>
       </div>
-    </div>
-  );
-}
-
-function RuntimeBadge({
-  configured,
-  loading,
-  running,
-  tauriRuntime,
-}: {
-  configured?: boolean;
-  loading: boolean;
-  running: boolean;
-  tauriRuntime: boolean;
-}) {
-  if (!tauriRuntime) {
-    return <Badge className="bg-muted text-muted-foreground">浏览器预览</Badge>;
-  }
-
-  if (loading) {
-    return (
-      <Badge className="bg-muted text-muted-foreground">
-        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-        检查中
-      </Badge>
-    );
-  }
-
-  if (running) {
-    return (
-      <Badge className="border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
-        <CheckCircle2 className="mr-1 h-3 w-3" />
-        就绪
-      </Badge>
-    );
-  }
-
-  return (
-    <Badge className="border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300">
-      {configured ? "服务未启动" : "模型未配置"}
-    </Badge>
-  );
-}
-
-function InlineNotice({
-  description,
-  title,
-  tone = "neutral",
-}: {
-  description: string;
-  title: string;
-  tone?: "danger" | "neutral";
-}) {
-  return (
-    <div
-      className={cn(
-        "rounded-lg border px-3 py-3",
-        tone === "danger" ? "border-destructive/20 bg-destructive/5" : "border-border bg-card/60",
-      )}
-    >
-      <div className="text-[13px] font-medium text-foreground">{title}</div>
-      <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
-    </div>
-  );
-}
-
-function SessionListSkeleton() {
-  return (
-    <div className="space-y-2">
-      {Array.from({ length: 5 }).map((_, index) => (
-        <div key={index} className="rounded-lg border border-border/60 bg-card/50 p-3">
-          <div className="h-3 w-4/5 rounded bg-muted" />
-          <div className="mt-2 h-2 w-2/5 rounded bg-muted" />
-        </div>
-      ))}
     </div>
   );
 }
@@ -2439,10 +2184,6 @@ function mergeSession(current: HermesSession[] | undefined, session: HermesSessi
   return [session, ...current.filter((item) => item.id !== session.id)];
 }
 
-function sessionTitle(session: HermesSession): string {
-  return session.title?.trim() || "未命名会话";
-}
-
 function titleFromPrompt(prompt: string): string {
   return prompt.replace(/\s+/g, " ").slice(0, 36) || "新对话";
 }
@@ -2541,24 +2282,6 @@ async function copyText(text: string): Promise<boolean> {
     console.error("Failed to write clipboard with fallback API", error);
     return false;
   }
-}
-
-function formatSessionTime(value?: string | null): string {
-  if (!value) {
-    return "刚刚";
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "刚刚";
-  }
-
-  return new Intl.DateTimeFormat("zh-CN", {
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    month: "2-digit",
-  }).format(date);
 }
 
 function createMessageId(prefix: string): string {
