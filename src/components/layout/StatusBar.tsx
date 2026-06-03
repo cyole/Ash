@@ -1,16 +1,11 @@
-import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, Bot, Clock3, HardDrive, Plus, X } from "lucide-react";
-import { Link, useLocation, useNavigate } from "react-router";
+import { ArrowLeft, ArrowRight, Bot, HardDrive, X } from "lucide-react";
+import { useLocation, useNavigate } from "react-router";
 import { Button } from "@/components/ui/button";
-import { hermesQueryKeys, useHermesApi } from "@/lib/hermes/queries";
-import { sessionTitle } from "@/lib/hermes/session-format";
+import { useHermesApi } from "@/lib/hermes/queries";
 import { cn } from "@/lib/utils";
 
 const routeTitles: Record<string, string> = {
   "/": "首页",
-  "/chat": "新会话",
-  "/sessions": "会话",
   "/tasks": "任务",
   "/jobs": "作业",
   "/files": "文件",
@@ -25,25 +20,8 @@ const titlebarIconButtonClass =
 export function StatusBar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { apiKey, apiReady, apiUrl, client } = useHermesApi();
-  const hasApiKey = Boolean(apiKey);
-  const sessionId = new URLSearchParams(location.search).get("session");
-
-  const sessionsQuery = useQuery({
-    queryKey: hermesQueryKeys.sessions(apiUrl, hasApiKey),
-    queryFn: () => client.listSessions(),
-    enabled: apiReady && location.pathname === "/chat",
-    retry: false,
-  });
-
-  const title = useMemo(() => {
-    if (location.pathname === "/chat" && sessionId) {
-      const session = sessionsQuery.data?.find((item) => item.id === sessionId);
-      return session ? sessionTitle(session) : "新会话";
-    }
-
-    return routeTitles[location.pathname] ?? "Hermes";
-  }, [location.pathname, sessionId, sessionsQuery.data]);
+  const { apiReady } = useHermesApi();
+  const title = routeTitles[location.pathname] ?? "Hermes";
 
   return (
     <header
@@ -72,11 +50,6 @@ export function StatusBar() {
           >
             <ArrowRight className="h-[18px] w-[18px]" />
           </Button>
-          <Button variant="ghost" size="icon" asChild className={titlebarIconButtonClass} aria-label="会话历史">
-            <Link to="/sessions">
-              <Clock3 className="h-[18px] w-[18px]" />
-            </Link>
-          </Button>
         </div>
 
         <div className="flex h-8 min-w-[210px] max-w-[320px] items-center gap-2 rounded-lg bg-card px-2.5 text-foreground shadow-sm">
@@ -94,12 +67,6 @@ export function StatusBar() {
             <X className="h-3 w-3" />
           </Button>
         </div>
-
-        <Button variant="ghost" size="icon" asChild className="h-7 w-7 rounded-full" aria-label="新建聊天">
-          <Link to="/chat">
-            <Plus className="h-4 w-4" />
-          </Link>
-        </Button>
 
         <div className="h-full min-w-4 flex-1" data-tauri-drag-region="deep" />
       </div>

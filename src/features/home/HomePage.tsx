@@ -1,26 +1,6 @@
-import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  Bot,
-  Clock3,
-  GraduationCap,
-  Loader2,
-  Plus,
-  RefreshCw,
-  SendHorizontal,
-  Sparkles,
-  X,
-} from "lucide-react";
-import { useNavigate } from "react-router";
-import { toast } from "sonner";
+import { Bot, Clock3, GraduationCap, RefreshCw, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { savePendingSessionMessage } from "@/features/chat/chat-utils";
-import { hermesQueryKeys, useHermesApi } from "@/lib/hermes/queries";
-import type { HermesSession } from "@/lib/hermes/types";
-
-const modelChips = ["DeepSeek V4 Pro", "GPT Image 2", "Seedance 2.0"];
 
 const recommendedTasks = [
   {
@@ -41,49 +21,6 @@ const recommendedTasks = [
 ];
 
 export function HomePage() {
-  const [prompt, setPrompt] = useState("");
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { apiKey, apiReady, apiUrl, client } = useHermesApi();
-  const hasApiKey = Boolean(apiKey);
-
-  const createSession = useMutation({
-    mutationFn: async (message: string) => {
-      const session = await client.createSession({
-        title: message.slice(0, 36),
-        source: "desktop",
-      });
-      return { message, session };
-    },
-    onSuccess: ({ message, session }) => {
-      cacheCreatedSession(queryClient, hermesQueryKeys.sessions(apiUrl, hasApiKey), session);
-      const saved = savePendingSessionMessage(session.id, message);
-      setPrompt("");
-      navigate(`/chat?session=${encodeURIComponent(session.id)}`);
-      if (!saved) {
-        toast.message("已创建会话，但未能自动带入首页输入。");
-      }
-    },
-    onError: (error) => {
-      console.error("Failed to create session from home", error);
-      toast.error("创建会话失败，请稍后再试。");
-    },
-  });
-
-  function handleSubmit() {
-    const message = prompt.trim();
-    if (!message || createSession.isPending) {
-      return;
-    }
-
-    if (!apiReady) {
-      toast.message("本地 API 认证正在准备中");
-      return;
-    }
-
-    createSession.mutate(message);
-  }
-
   return (
     <div className="h-full min-h-0 overflow-auto bg-card">
       <div className="mx-auto flex min-h-full w-full max-w-[920px] flex-col px-6 pb-10 pt-16">
@@ -100,101 +37,6 @@ export function HomePage() {
             准备开始了吗
           </h1>
         </section>
-
-        <section className="mb-3 rounded-[18px] border border-border bg-card shadow-[0_18px_50px_hsl(0_0%_0%/0.08)]">
-          <Textarea
-            aria-label="首页提问输入框"
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
-                return;
-              }
-
-              event.preventDefault();
-              handleSubmit();
-            }}
-            className="min-h-[118px] resize-none border-0 bg-transparent px-4 py-4 text-[14px] leading-6 shadow-none focus-visible:ring-0"
-            placeholder="提问、创建或开始任务。使用 @ 分配任务给其他智能体。"
-          />
-          <div className="flex items-center justify-between gap-3 border-t border-border/80 px-3 py-2">
-            <div className="flex min-w-0 items-center gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-8 rounded-full bg-muted/70 px-3 text-[12px] text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-                智能
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label="添加"
-                className="h-8 w-8 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-8 rounded-full px-3 text-[12px] text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                默认模型
-              </Button>
-              <Button
-                type="button"
-                size="icon"
-                aria-label="发送"
-                disabled={!prompt.trim() || createSession.isPending}
-                onClick={handleSubmit}
-                className="h-9 w-9 rounded-full"
-              >
-                {createSession.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <SendHorizontal className="h-4 w-4" />
-                )}
-              </Button>
-            </div>
-          </div>
-          <div className="flex items-center justify-between gap-3 border-t border-border/60 px-4 py-3 text-[13px] text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4" />
-              <span>创建你自己的消息频道</span>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="关闭消息频道提示"
-              className="h-7 w-7 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
-            >
-              <X className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </section>
-
-        <div className="mb-14 flex flex-wrap items-center justify-center gap-2">
-          <Badge className="border-0 bg-muted text-muted-foreground">上新</Badge>
-          {modelChips.map((chip) => (
-            <Button
-              key={chip}
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 rounded-full bg-card px-4 text-[13px] font-medium shadow-sm"
-            >
-              <Sparkles className="h-3.5 w-3.5 text-primary" />
-              {chip}
-            </Button>
-          ))}
-        </div>
 
         <section>
           <div className="mb-5 flex items-center justify-between gap-4">
@@ -247,15 +89,4 @@ export function HomePage() {
       </div>
     </div>
   );
-}
-
-function cacheCreatedSession(
-  queryClient: ReturnType<typeof useQueryClient>,
-  queryKey: readonly unknown[],
-  session: HermesSession,
-) {
-  queryClient.setQueryData<HermesSession[]>(queryKey, (current) => [
-    session,
-    ...(current ?? []).filter((item) => item.id !== session.id),
-  ]);
 }

@@ -4,7 +4,6 @@ import { createHashRouter } from "react-router";
 import { Loader2 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 
-const ChatPage = lazy(() => import("@/features/chat/ChatPage").then(({ ChatPage }) => ({ default: ChatPage })));
 const ExtensionsPage = lazy(() =>
   import("@/features/extensions/ExtensionsPage").then(({ ExtensionsPage }) => ({ default: ExtensionsPage })),
 );
@@ -14,9 +13,6 @@ const JobsPage = lazy(() => import("@/features/jobs/JobsPage").then(({ JobsPage 
 const ModelsPage = lazy(() => import("@/features/models/ModelsPage").then(({ ModelsPage }) => ({ default: ModelsPage })));
 const OnboardingPage = lazy(() =>
   import("@/features/onboarding/OnboardingPage").then(({ OnboardingPage }) => ({ default: OnboardingPage })),
-);
-const SessionsPage = lazy(() =>
-  import("@/features/sessions/SessionsPage").then(({ SessionsPage }) => ({ default: SessionsPage })),
 );
 const SettingsPage = lazy(() =>
   import("@/features/settings/SettingsPage").then(({ SettingsPage }) => ({ default: SettingsPage })),
@@ -33,8 +29,6 @@ export const router = createHashRouter([
     element: <AppLayout />,
     children: [
       { index: true, element: routeElement(<HomePage />) },
-      { path: "chat", element: routeElement(<ChatPage />) },
-      { path: "sessions", element: routeElement(<SessionsPage />) },
       { path: "tasks", element: routeElement(<TasksPage />) },
       { path: "jobs", element: routeElement(<JobsPage />) },
       { path: "files", element: routeElement(<FilesPage />) },
