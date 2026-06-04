@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
-import { Link } from "react-router";
 import { highlighterThemes, mermaidThemes } from "@lobehub/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -12,6 +11,7 @@ import {
   Cpu,
   FileText,
   Gauge,
+  KeyRound,
   Loader2,
   Monitor,
   MonitorCog,
@@ -35,6 +35,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { LobeRuntimeProvider } from "@/features/chat/components/LobeRuntimeProvider";
 import { MarkdownMessage } from "@/features/chat/components/MarkdownMessage";
+import { ModelSettingsPanel, ProviderSettingsPanel } from "@/features/models/ModelsPage";
 import {
   accentColors,
   animationModes,
@@ -69,7 +70,7 @@ import type { ModelInfoResponse } from "@/types/hermes-dashboard";
 import type { HermesStatus, RuntimeCommandResult } from "@/types/hermes";
 
 type RuntimeAction = "prepare" | "start" | "stop" | "status" | "doctor" | "portal" | "logs";
-type SettingsSectionId = "appearance" | "chat" | "model" | "runtime" | "advanced" | "about";
+type SettingsSectionId = "appearance" | "chat" | "model" | "providers" | "runtime" | "advanced" | "about";
 
 interface SettingsSectionNav {
   id: SettingsSectionId;
@@ -115,6 +116,12 @@ const settingsSections: SettingsSectionNav[] = [
     label: "服务模型",
     description: "默认提供商和模型连接状态。",
     icon: <Sparkles className="h-4 w-4" />,
+  },
+  {
+    id: "providers",
+    label: "服务商设置",
+    description: "API Key、代理地址和自定义 provider。",
+    icon: <KeyRound className="h-4 w-4" />,
   },
   {
     id: "runtime",
@@ -327,9 +334,8 @@ export function SettingsPage() {
           <div className="space-y-6">
             {activeSection === "appearance" ? <AppearanceSection /> : null}
             {activeSection === "chat" ? <ChatAppearanceSection /> : null}
-            {activeSection === "model" ? (
-              <ModelSection modelInfo={modelInfo.data} loading={modelInfo.isLoading} error={modelInfo.error} />
-            ) : null}
+            {activeSection === "model" ? <ModelSection /> : null}
+            {activeSection === "providers" ? <ProviderSection /> : null}
             {activeSection === "runtime" ? (
               <RuntimeSection
                 busy={busy}
@@ -498,66 +504,12 @@ function ChatAppearanceSection() {
   );
 }
 
-function ModelSection({
-  error,
-  loading,
-  modelInfo,
-}: {
-  error: unknown;
-  loading: boolean;
-  modelInfo?: ModelInfoResponse;
-}) {
-  const configured = Boolean(modelInfo?.provider && modelInfo.model);
+function ModelSection() {
+  return <ModelSettingsPanel />;
+}
 
-  return (
-    <div className="space-y-6">
-      <SettingsGroup title="默认模型">
-        <SettingsRow
-          label="配置状态"
-          description="来自 Hermes dashboard /api/model/info。"
-          action={<ModelStatusBadge configured={configured} loading={loading} />}
-        />
-        <SettingsRow
-          label="提供商"
-          description={modelInfo?.provider ?? "尚未返回 provider。"}
-          action={<ValuePill value={modelInfo?.provider ?? "未配置"} />}
-        />
-        <SettingsRow
-          label="默认模型"
-          description={modelInfo?.model ?? "还没有默认模型。"}
-          action={<ValuePill value={modelInfo?.model ?? "未配置"} mono />}
-        />
-        <SettingsRow
-          label="有效上下文"
-          description="dashboard 合并模型能力和配置后的上下文长度。"
-          action={<ValuePill value={formatSettingsNumber(modelInfo?.effective_context_length)} mono />}
-        />
-        <SettingsRow
-          label="配置上下文"
-          description="如果用户显式设置过 context length，会显示在这里。"
-          action={<ValuePill value={formatSettingsNumber(modelInfo?.config_context_length)} mono />}
-        />
-        {error ? (
-          <SettingsRow
-            label="读取失败"
-            description={errorMessage(error)}
-            action={<StatusPill tone="danger">需要处理</StatusPill>}
-          />
-        ) : null}
-      </SettingsGroup>
-
-      <SettingsGroup title="模型管理">
-        <div className="flex flex-wrap gap-2 px-4 py-4">
-          <Button asChild>
-            <Link to="/models">
-              <Sparkles className="h-4 w-4" />
-              打开模型设置
-            </Link>
-          </Button>
-        </div>
-      </SettingsGroup>
-    </div>
-  );
+function ProviderSection() {
+  return <ProviderSettingsPanel />;
 }
 
 function RuntimeSection({
@@ -1180,23 +1132,6 @@ function RuntimeBadge({
   );
 }
 
-function ModelStatusBadge({ configured, loading }: { configured?: boolean; loading: boolean }) {
-  if (loading) {
-    return (
-      <Badge className="border-border bg-secondary text-muted-foreground">
-        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-        检查中
-      </Badge>
-    );
-  }
-
-  return (
-    <StatusPill tone={configured ? "success" : "warning"}>
-      {configured ? "已配置" : "需要设置"}
-    </StatusPill>
-  );
-}
-
 function StatusPill({
   children,
   tone,
@@ -1299,10 +1234,6 @@ function LogPreview({ lines }: { lines: string[] }) {
       </pre>
     </div>
   );
-}
-
-function formatSettingsNumber(value: number | undefined) {
-  return typeof value === "number" && Number.isFinite(value) ? value.toLocaleString() : "未设置";
 }
 
 function runtimeSummary(runtime?: HermesStatus) {

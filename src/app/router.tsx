@@ -11,7 +11,6 @@ const ChatPage = lazy(() => import("@/features/chat/ChatPage").then(({ ChatPage 
 const FilesPage = lazy(() => import("@/features/files/FilesPage").then(({ FilesPage }) => ({ default: FilesPage })));
 const HomePage = lazy(() => import("@/features/home/HomePage").then(({ HomePage }) => ({ default: HomePage })));
 const JobsPage = lazy(() => import("@/features/jobs/JobsPage").then(({ JobsPage }) => ({ default: JobsPage })));
-const ModelsPage = lazy(() => import("@/features/models/ModelsPage").then(({ ModelsPage }) => ({ default: ModelsPage })));
 const OnboardingPage = lazy(() =>
   import("@/features/onboarding/OnboardingPage").then(({ OnboardingPage }) => ({ default: OnboardingPage })),
 );
@@ -34,7 +33,6 @@ export const router = createHashRouter([
       { path: "tasks", element: routeElement(<TasksPage />) },
       { path: "jobs", element: routeElement(<JobsPage />) },
       { path: "files", element: routeElement(<FilesPage />) },
-      { path: "models", element: routeElement(<ModelsPage />) },
       { path: "extensions", element: routeElement(<ExtensionsPage />) },
       { path: "settings", element: routeElement(<SettingsPage />) },
     ],

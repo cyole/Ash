@@ -12,7 +12,6 @@ const routeTitles: Record<string, string> = {
   "/tasks": "自动化",
   "/jobs": "作业",
   "/files": "搜索",
-  "/models": "模型",
   "/extensions": "插件",
   "/settings": "设置",
 };
