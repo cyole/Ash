@@ -115,12 +115,17 @@ sign_macos_native_code() {
   local signed_count=0
   local candidate
   local file_info
+  local codesign_args=(--force --timestamp --options runtime --sign "$identity")
+
+  if [ -n "${APPLE_SIGNING_KEYCHAIN:-}" ]; then
+    codesign_args+=(--keychain "$APPLE_SIGNING_KEYCHAIN")
+  fi
 
   while IFS= read -r -d '' candidate; do
     file_info="$(file -b "$candidate" || true)"
     case "$file_info" in
       *Mach-O*)
-        codesign --force --timestamp --options runtime --sign "$identity" "$candidate"
+        codesign "${codesign_args[@]}" "$candidate"
         signed_count=$((signed_count + 1))
         ;;
     esac
