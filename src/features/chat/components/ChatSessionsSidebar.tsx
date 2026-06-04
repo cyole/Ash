@@ -31,7 +31,7 @@ export function ChatSessionsSidebar() {
 
   return (
     <section className="flex h-full min-h-0 flex-col" aria-label="对话">
-      <div className="mb-1.5 px-2 text-[12px] font-semibold tracking-normal text-muted-foreground/70">对话</div>
+      <div className="mb-1.5 px-0.5 text-[11px] font-medium text-muted-foreground">对话</div>
 
       <div className="min-h-0 flex-1 overflow-auto">
         {sessions.isLoading ? (
@@ -81,17 +81,15 @@ function ChatSessionItem({
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "group flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left text-muted-foreground transition-colors hover:bg-foreground/[0.055] hover:text-foreground",
-        generating && "bg-foreground/[0.06] text-foreground",
-        active && "bg-foreground/[0.07] text-foreground",
+        "group flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-muted-foreground transition-colors hover:bg-black/[0.04] hover:text-foreground",
+        generating && "bg-black/[0.045] text-foreground",
+        active && "bg-black/[0.055] font-medium text-foreground",
       )}
     >
-      <span className={cn("min-w-0 flex-1 truncate text-[13px] leading-5", active && "font-semibold")}>
-        {sessionTitle(session)}
-      </span>
+      <span className="min-w-0 flex-1 truncate text-[13px] leading-5">{sessionTitle(session)}</span>
       {generating ? (
         <span className="ml-1 shrink-0 text-muted-foreground/80" role="status" aria-label="正在等待回复">
-          <LoaderCircle className="h-3 w-3 animate-spin" aria-hidden="true" />
+          <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
         </span>
       ) : unread ? (
         <span className="ml-1 h-1.5 w-1.5 shrink-0 rounded-full bg-foreground/70" role="status" aria-label="有新回复" />
@@ -99,17 +97,14 @@ function ChatSessionItem({
         <>
           <span
             className={cn(
-              "ml-2 w-9 shrink-0 text-right text-[10px] font-normal leading-4 text-muted-foreground/65 transition-opacity group-hover:hidden",
+              "ml-2 min-w-[46px] shrink-0 whitespace-nowrap text-right text-[10px] font-normal leading-4 text-muted-foreground/65 transition-opacity group-hover:hidden",
               active && "hidden",
             )}
           >
             {formatSidebarSessionTime(sessionUpdatedAt(session))}
           </span>
           <span
-            className={cn(
-              "ml-1 hidden shrink-0 items-center gap-1 text-muted-foreground/80 transition-colors group-hover:flex",
-              active && "flex",
-            )}
+            className="ml-1 hidden shrink-0 items-center gap-1 text-muted-foreground/80 transition-colors group-hover:flex"
             aria-hidden="true"
           >
             <Pin className="h-3.5 w-3.5" />

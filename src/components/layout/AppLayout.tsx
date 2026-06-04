@@ -5,7 +5,7 @@ import { AppSidebar } from "@/components/layout/AppSidebar";
 import { StatusBar } from "@/components/layout/StatusBar";
 
 const sidebarDefaultWidth = 236;
-const sidebarMinWidth = 208;
+const sidebarMinWidth = 224;
 const sidebarMaxWidth = 360;
 const sidebarWidthStorageKey = "hermes.sidebar.width.v1";
 
