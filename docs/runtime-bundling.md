@@ -2,7 +2,7 @@
 
 ## Product Decision
 
-Hermes Desktop should ship a built-in local engine instead of asking normal
+Ash should ship a built-in local engine instead of asking normal
 users to install Hermes from a terminal.
 
 Default user flow:

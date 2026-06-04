@@ -6,7 +6,7 @@ export type RuntimeMode =
   | "remote"
   | "browser-preview";
 
-export interface HermesStatus {
+export interface RuntimeStatus {
   installed: boolean;
   running: boolean;
   dashboardRunning: boolean;

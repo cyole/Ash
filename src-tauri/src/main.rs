@@ -1,3 +1,3 @@
 fn main() {
-    hermes_lib::run()
+    ash_lib::run()
 }

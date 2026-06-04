@@ -31,10 +31,10 @@ import {
 } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { errorMessage } from "@/lib/errors";
-import { hermesQueryKeys, useHermesApi } from "@/lib/hermes/queries";
+import { ashQueryKeys, useAshApi } from "@/lib/hermes/queries";
 import { cn } from "@/lib/utils";
 import type { HermesApiClient } from "@/lib/hermes/api";
-import type { SkillInfo, ToolEnvVar, ToolProvider, ToolsetInfo } from "@/types/hermes-dashboard";
+import type { SkillInfo, ToolEnvVar, ToolProvider, ToolsetInfo } from "@/types/runtime-dashboard";
 
 type CatalogMode = "skills" | "toolsets";
 
@@ -49,14 +49,14 @@ const catalogModeOptions = [
 ] as const satisfies ReadonlyArray<readonly [CatalogMode, string]>;
 
 export function ExtensionsPage() {
-  const { apiReady, apiUrl, client, sessionToken } = useHermesApi();
+  const { apiReady, apiUrl, client, sessionToken } = useAshApi();
   const queryClient = useQueryClient();
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<CatalogMode>("skills");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [expandedToolset, setExpandedToolset] = useState<string | null>(null);
   const hasSessionToken = Boolean(sessionToken);
-  const capabilitiesQueryKey = hermesQueryKeys.extensions(apiUrl, hasSessionToken);
+  const capabilitiesQueryKey = ashQueryKeys.extensions(apiUrl, hasSessionToken);
 
   const catalog = useQuery({
     enabled: apiReady,
@@ -143,7 +143,7 @@ export function ExtensionsPage() {
       <PageHeader
         eyebrow="扩展"
         title="技能与工具集"
-        description="从 Hermes dashboard 读取官方 capabilities，启用状态、工具集 provider 和密钥配置都会直接写入运行时。"
+        description="从本地 dashboard 读取官方 capabilities，启用状态、工具集 provider 和密钥配置都会直接写入运行时。"
         actions={
           <Button variant="outline" onClick={() => void catalog.refetch()} disabled={catalog.isFetching || !apiReady}>
             {catalog.isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
@@ -421,7 +421,7 @@ function ToolsetConfigPanel({
 }) {
   const [activeProvider, setActiveProvider] = useState<string | null>(null);
   const config = useQuery({
-    queryKey: hermesQueryKeys.toolsetConfig(apiUrl, hasSessionToken, toolsetName),
+    queryKey: ashQueryKeys.toolsetConfig(apiUrl, hasSessionToken, toolsetName),
     queryFn: () => client.getToolsetConfig(toolsetName),
     retry: false,
   });
@@ -483,7 +483,7 @@ function ToolsetConfigPanel({
   if (!config.data?.has_category) {
     return (
       <div className="mt-3 rounded-md border border-border bg-muted/40 px-3 py-3 text-sm text-muted-foreground">
-        这个工具集没有 provider 选项，启用后会直接使用当前 Hermes 配置。
+        这个工具集没有 provider 选项，启用后会直接使用当前运行时配置。
       </div>
     );
   }

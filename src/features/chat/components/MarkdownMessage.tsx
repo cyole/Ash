@@ -2,7 +2,7 @@ import type { MarkdownProps } from "@lobehub/ui";
 import { Markdown } from "@lobehub/ui";
 import { useMemo } from "react";
 import { LobeRuntimeProvider, useLobeRuntime } from "@/features/chat/components/LobeRuntimeProvider";
-import { useHermesSettings } from "@/features/settings/settings-store";
+import { useAshSettings } from "@/features/settings/settings-store";
 
 interface MarkdownMessageProps {
   children: string;
@@ -11,7 +11,7 @@ interface MarkdownMessageProps {
 }
 
 export function MarkdownMessage({ children, streaming, tone = "default" }: MarkdownMessageProps) {
-  const { settings } = useHermesSettings();
+  const { settings } = useAshSettings();
   const hasLobeRuntime = useLobeRuntime();
   const shouldAnimate = Boolean(streaming && settings.animationMode !== "disabled");
   const componentProps = useMemo(
@@ -39,7 +39,7 @@ export function MarkdownMessage({ children, streaming, tone = "default" }: Markd
     <div className="relative">
       <Markdown
         animated={shouldAnimate}
-        className={tone === "user" ? "hermes-lobe-markdown hermes-lobe-markdown-user" : "hermes-lobe-markdown"}
+        className={tone === "user" ? "ash-lobe-markdown ash-lobe-markdown-user" : "ash-lobe-markdown"}
         componentProps={componentProps}
         enableGithubAlert
         enableHtmlPreview

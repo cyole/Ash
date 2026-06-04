@@ -1,11 +1,11 @@
-import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { useEffect, useState } from "react";
 import type { LucideIcon } from "lucide-react";
-import { ArrowLeft, ArrowRight, Clock3, Moon, PackageSearch, PenLine, Search, Settings, Sun } from "lucide-react";
-import { NavLink, useNavigate } from "react-router";
+import { Clock3, Moon, PackageSearch, PenLine, Search, Settings, Sun } from "lucide-react";
+import { NavLink } from "react-router";
 import { ChatSessionsSidebar } from "@/features/chat/components/ChatSessionsSidebar";
 import type { ThemeMode } from "@/features/settings/settings-store";
-import { useHermesSettings } from "@/features/settings/settings-store";
+import { useAshSettings } from "@/features/settings/settings-store";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -31,10 +31,8 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({ maxWidth, minWidth, onResizePointerDown, width }: AppSidebarProps) {
-  const navigate = useNavigate();
-
   return (
-    <aside className="hermes-sidebar-surface relative flex h-full w-[var(--hermes-sidebar-width)] shrink-0 select-none flex-col overflow-hidden px-3 pb-3 pt-[calc(var(--hermes-titlebar-height)+8px)] text-muted-foreground">
+    <aside className="ash-sidebar-surface relative flex h-full w-[var(--ash-sidebar-width)] shrink-0 select-none flex-col overflow-hidden px-3 pb-3 pt-[calc(var(--ash-titlebar-height)+8px)] text-muted-foreground">
       <button
         type="button"
         aria-label="调整侧边栏宽度"
@@ -46,20 +44,8 @@ export function AppSidebar({ maxWidth, minWidth, onResizePointerDown, width }: A
         onPointerDown={onResizePointerDown}
         role="separator"
       >
-        <span className="absolute inset-y-3 right-1/2 w-px translate-x-1/2 rounded-full bg-transparent transition-colors group-hover:bg-black/15 group-active:bg-black/25" />
+        <span className="absolute inset-y-3 right-1/2 w-px translate-x-1/2 rounded-full bg-transparent transition-colors group-hover:bg-[var(--ash-sidebar-resize-hover)] group-active:bg-[var(--ash-sidebar-resize-active)]" />
       </button>
-
-      <div
-        className="absolute inset-x-0 top-0 flex h-[var(--hermes-titlebar-height)] items-center justify-end gap-1 pr-4 text-muted-foreground/80"
-        data-tauri-drag-region="deep"
-      >
-        <SidebarNavigationButton label="返回" onClick={() => navigate(-1)}>
-          <ArrowLeft className="h-4 w-4" />
-        </SidebarNavigationButton>
-        <SidebarNavigationButton label="前进" onClick={() => navigate(1)}>
-          <ArrowRight className="h-4 w-4" />
-        </SidebarNavigationButton>
-      </div>
 
       <nav className="shrink-0 space-y-0.5" aria-label="快捷入口">
         {quickNav.map((item) => (
@@ -79,28 +65,6 @@ export function AppSidebar({ maxWidth, minWidth, onResizePointerDown, width }: A
   );
 }
 
-function SidebarNavigationButton({
-  children,
-  label,
-  onClick,
-}: {
-  children: ReactNode;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      onClick={onClick}
-      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-black/[0.04] hover:text-foreground"
-    >
-      {children}
-    </button>
-  );
-}
-
 function SidebarLink({ className, item }: { className?: string; item: NavItem }) {
   return (
     <NavLink
@@ -108,7 +72,7 @@ function SidebarLink({ className, item }: { className?: string; item: NavItem })
       end={item.to === "/"}
       className={({ isActive }) =>
         cn(
-          "flex h-9 items-center gap-2.5 rounded-lg px-2 text-[13px] transition-colors hover:bg-black/[0.04] hover:text-foreground",
+          "flex h-9 items-center gap-2.5 rounded-lg px-2 text-[13px] transition-colors hover:bg-[var(--ash-sidebar-control-hover)] hover:text-foreground",
           isActive && "font-medium text-foreground",
           className,
         )
@@ -121,7 +85,7 @@ function SidebarLink({ className, item }: { className?: string; item: NavItem })
 }
 
 function ThemeModeToggleButton() {
-  const { settings, updateSettings } = useHermesSettings();
+  const { settings, updateSettings } = useAshSettings();
   const dark = useEffectiveDarkMode(settings.themeMode);
   const nextTheme = dark ? "light" : "dark";
   const label = dark ? "切换到浅色" : "切换到深色";
@@ -132,7 +96,7 @@ function ThemeModeToggleButton() {
       type="button"
       aria-label={label}
       title={label}
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-black/[0.04] hover:text-foreground"
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-[var(--ash-sidebar-control-hover)] hover:text-foreground"
       onClick={() => updateSettings({ themeMode: nextTheme })}
     >
       <Icon className="h-4 w-4" />

@@ -1,8 +1,8 @@
-# Hermes
+# Ash
 
-Hermes is a local-first desktop client for Hermes Agent.
+Ash is a local-first desktop client for Hermes Agent.
 
-The first product goal is to make Hermes usable for normal people without
+The first product goal is to make Ash usable for normal people without
 asking them to manage terminals, local servers, credentials, or config files by
 hand.
 
@@ -29,7 +29,7 @@ scripts/hermes-web-ui-local.sh start
 ```
 
 Install the official `hermes-web-ui` package yourself first. This wrapper only
-adds the Hermes Desktop environment variables, then runs the official CLI
+adds the Ash environment variables, then runs the official CLI
 against the app-managed `hermes-home` and bundled runtime. The Web UI opens at
 <http://localhost:8648>.
 
@@ -42,7 +42,7 @@ cd src-tauri && cargo check
 
 ## Working Positioning
 
-Hermes Desktop is not another chat UI. It is a local assistant workspace for:
+Ash is not another chat UI. It is a local assistant workspace for:
 
 - preparing a built-in local engine
 - chatting with streaming task progress

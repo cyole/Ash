@@ -36,7 +36,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { errorMessage } from "@/lib/errors";
 import type { HermesApiClient } from "@/lib/hermes/api";
-import { hermesQueryKeys, useHermesApi } from "@/lib/hermes/queries";
+import { ashQueryKeys, useAshApi } from "@/lib/hermes/queries";
 import { cn } from "@/lib/utils";
 import type {
   AuxiliaryModelsResponse,
@@ -45,7 +45,7 @@ import type {
   ModelInfoResponse,
   ModelOptionProvider,
   ModelOptionsResponse,
-} from "@/types/hermes-dashboard";
+} from "@/types/runtime-dashboard";
 
 interface ModelSettingsData {
   auxiliary: AuxiliaryModelsResponse | null;
@@ -104,7 +104,7 @@ const auxiliaryTasks = [
 
 export function ModelSettingsPanel() {
   const queryClient = useQueryClient();
-  const { apiReady, apiUrl, client, sessionToken, status } = useHermesApi();
+  const { apiReady, apiUrl, client, sessionToken, status } = useAshApi();
   const [selectedProvider, setSelectedProvider] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
   const [editingAuxiliaryTask, setEditingAuxiliaryTask] = useState<string | null>(null);
@@ -113,7 +113,7 @@ export function ModelSettingsPanel() {
 
   const modelSettings = useQuery({
     enabled: apiReady,
-    queryKey: hermesQueryKeys.modelSettings(apiUrl, Boolean(sessionToken)),
+    queryKey: ashQueryKeys.modelSettings(apiUrl, Boolean(sessionToken)),
     queryFn: async (): Promise<ModelSettingsData> => {
       const [info, options, auxiliary] = await Promise.all([
         client.getGlobalModelInfo(),
@@ -151,7 +151,7 @@ export function ModelSettingsPanel() {
 
   const refresh = () =>
     queryClient.invalidateQueries({
-      queryKey: hermesQueryKeys.modelSettings(apiUrl, Boolean(sessionToken)),
+      queryKey: ashQueryKeys.modelSettings(apiUrl, Boolean(sessionToken)),
     });
 
   const applyMainModel = useMutation({
@@ -168,7 +168,7 @@ export function ModelSettingsPanel() {
     },
     onSuccess: () => {
       void refresh();
-      void queryClient.invalidateQueries({ queryKey: hermesQueryKeys.models(apiUrl, Boolean(sessionToken)) });
+      void queryClient.invalidateQueries({ queryKey: ashQueryKeys.models(apiUrl, Boolean(sessionToken)) });
       toast.success("主模型已更新");
     },
     onError: (error) => toast.error(errorMessage(error)),
@@ -177,7 +177,7 @@ export function ModelSettingsPanel() {
   const restartGateway = useMutation({
     mutationFn: () => client.restartGateway(),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: hermesQueryKeys.runtimeStatus });
+      void queryClient.invalidateQueries({ queryKey: ashQueryKeys.runtimeStatus });
       toast.success("Gateway 已重启");
     },
     onError: (error) => toast.error(errorMessage(error)),
@@ -350,7 +350,7 @@ export function ModelSettingsPanel() {
           <section className="rounded-lg border border-border">
             <SectionHeader icon={<Cpu className="h-4 w-4" />} title="辅助模型" />
             <div className="border-b border-border px-4 py-3 text-xs leading-5 text-muted-foreground">
-              辅助任务默认跟随主模型；为某个任务单独选择模型后，Hermes 会只在该任务上使用这个覆盖配置。
+              辅助任务默认跟随主模型；为某个任务单独选择模型后，本地引擎会只在该任务上使用这个覆盖配置。
             </div>
             <div className="divide-y divide-border">
               {auxiliaryTasks.map((task) => (
@@ -411,13 +411,13 @@ export function ModelSettingsPanel() {
 
 export function ProviderSettingsPanel() {
   const queryClient = useQueryClient();
-  const { apiReady, apiUrl, client, sessionToken, status } = useHermesApi();
+  const { apiReady, apiUrl, client, sessionToken, status } = useAshApi();
   const [selectedProviderSlug, setSelectedProviderSlug] = useState("");
   const [providerSearch, setProviderSearch] = useState("");
   const [providerModelSearch, setProviderModelSearch] = useState("");
   const [providerEditorDraft, setProviderEditorDraft] = useState<ProviderEditorDraft | null>(null);
 
-  const providerSettingsKey = ["hermes-provider-settings", apiUrl, Boolean(sessionToken)] as const;
+  const providerSettingsKey = ["ash-provider-settings", apiUrl, Boolean(sessionToken)] as const;
   const providerSettings = useQuery({
     enabled: apiReady,
     queryKey: providerSettingsKey,
@@ -463,14 +463,14 @@ export function ProviderSettingsPanel() {
   const refresh = () =>
     Promise.all([
       queryClient.invalidateQueries({ queryKey: providerSettingsKey }),
-      queryClient.invalidateQueries({ queryKey: hermesQueryKeys.modelSettings(apiUrl, Boolean(sessionToken)) }),
-      queryClient.invalidateQueries({ queryKey: hermesQueryKeys.models(apiUrl, Boolean(sessionToken)) }),
+      queryClient.invalidateQueries({ queryKey: ashQueryKeys.modelSettings(apiUrl, Boolean(sessionToken)) }),
+      queryClient.invalidateQueries({ queryKey: ashQueryKeys.models(apiUrl, Boolean(sessionToken)) }),
     ]);
 
   const restartGateway = useMutation({
     mutationFn: () => client.restartGateway(),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: hermesQueryKeys.runtimeStatus });
+      void queryClient.invalidateQueries({ queryKey: ashQueryKeys.runtimeStatus });
       toast.success("Gateway 已重启");
     },
     onError: (error) => toast.error(errorMessage(error)),
@@ -834,7 +834,7 @@ function ProviderConfigurationSection({
               />
             ) : (
               <div className="flex min-h-[320px] items-center justify-center text-sm text-muted-foreground">
-                {loading ? "正在读取供应商配置..." : "Hermes dashboard 没有返回可配置供应商，可以点击添加服务商。"}
+                {loading ? "正在读取供应商配置..." : "本地 dashboard 没有返回可配置供应商，可以点击添加服务商。"}
               </div>
             )}
           </div>
@@ -870,7 +870,7 @@ function ProviderEditorForm({
           {draft.mode === "create" ? "添加服务商" : "编辑服务商"}
         </h3>
         <p className="text-xs leading-5 text-muted-foreground">
-          保存后会写入 Hermes config.yaml 的 providers 配置；适合 OpenAI-compatible 网关、Ollama / vLLM / LM Studio 等自定义端点。
+          保存后会写入运行时 config.yaml 的 providers 配置；适合 OpenAI-compatible 网关、Ollama / vLLM / LM Studio 等自定义端点。
         </p>
       </div>
 
@@ -1117,7 +1117,7 @@ function ProviderEnvVarRow({
             <CredentialBadge isSet={info.is_set} />
           </div>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            {info.description || info.category || "Hermes dashboard 暴露的供应商配置。"}
+            {info.description || info.category || "本地 dashboard 暴露的供应商配置。"}
           </p>
           {info.redacted_value ? (
             <div className="mt-2 font-mono text-xs text-muted-foreground">{info.redacted_value}</div>

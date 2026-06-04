@@ -13,7 +13,7 @@ export function TasksPage() {
       <EmptyState
         icon={<PlaySquare className="h-4 w-4" />}
         title="暂无任务"
-        description="Hermes 的任务事件会显示在这里，方便查看后台正在执行什么。"
+        description="Ash 的任务事件会显示在这里，方便查看后台正在执行什么。"
       />
     </div>
   );

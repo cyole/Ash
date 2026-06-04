@@ -30,19 +30,28 @@
 }
 
 :root {
-  --hermes-titlebar-height: 44px;
-  --hermes-chat-header-height: 52px;
-  --hermes-sidebar-width: 236px;
-  --hermes-action-sm: 24px;
-  --hermes-action-md: 28px;
-  --hermes-radius-sm: 4px;
-  --hermes-radius-md: 6px;
-  --hermes-radius-lg: 8px;
-  --hermes-radius-xl: 12px;
-  --hermes-shadow-popover: 0 0 15px 0 hsl(0 0% 0% / 0.03), 0 2px 30px 0 hsl(0 0% 0% / 0.08);
-  --hermes-shadow-panel: 0 12px 32px hsl(0 0% 0% / 0.055);
-  --hermes-motion-duration: 160ms;
-  --hermes-motion-ease: cubic-bezier(0.2, 0, 0, 1);
+  --ash-titlebar-height: 44px;
+  --ash-chat-header-height: 52px;
+  --ash-sidebar-width: 236px;
+  --ash-action-sm: 24px;
+  --ash-action-md: 28px;
+  --ash-radius-sm: 4px;
+  --ash-radius-md: 6px;
+  --ash-radius-lg: 8px;
+  --ash-radius-xl: 12px;
+  --ash-shadow-popover: 0 0 15px 0 hsl(0 0% 0% / 0.03), 0 2px 30px 0 hsl(0 0% 0% / 0.08);
+  --ash-shadow-panel: 0 12px 32px hsl(0 0% 0% / 0.055);
+  --ash-motion-duration: 160ms;
+  --ash-motion-ease: cubic-bezier(0.2, 0, 0, 1);
+  --ash-sidebar-control-active: hsl(0 0% 0% / 0.055);
+  --ash-sidebar-control-hover: hsl(0 0% 0% / 0.04);
+  --ash-sidebar-notice-bg: hsl(0 0% 0% / 0.025);
+  --ash-sidebar-notice-border: hsl(0 0% 0% / 0.1);
+  --ash-panel-border: hsl(0 0% 0% / 0.1);
+  --ash-sidebar-resize-active: hsl(0 0% 0% / 0.25);
+  --ash-sidebar-resize-hover: hsl(0 0% 0% / 0.15);
+  --ash-sidebar-skeleton: hsl(0 0% 0% / 0.1);
+  --ash-sidebar-surface: hsl(0 0% 93.5% / 0.54);
   --background: 0 0% 93.5%;
   --foreground: 0 0% 8%;
   --card: 0 0% 100%;
@@ -66,38 +75,38 @@
   --radius: 8px;
 }
 
-html[data-hermes-accent="blue"] {
+html[data-ash-accent="blue"] {
   --primary: 217 91% 55%;
   --primary-foreground: 0 0% 100%;
   --ring: 217 91% 60%;
 }
 
-html[data-hermes-accent="green"] {
+html[data-ash-accent="green"] {
   --primary: 160 84% 34%;
   --primary-foreground: 0 0% 100%;
   --ring: 160 84% 38%;
 }
 
-html[data-hermes-accent="rose"] {
+html[data-ash-accent="rose"] {
   --primary: 350 77% 52%;
   --primary-foreground: 0 0% 100%;
   --ring: 350 77% 58%;
 }
 
-html[data-hermes-animation="agile"] {
-  --hermes-motion-duration: 120ms;
-  --hermes-motion-ease: cubic-bezier(0.2, 0, 0, 1);
+html[data-ash-animation="agile"] {
+  --ash-motion-duration: 120ms;
+  --ash-motion-ease: cubic-bezier(0.2, 0, 0, 1);
 }
 
-html[data-hermes-animation="elegant"] {
-  --hermes-motion-duration: 240ms;
-  --hermes-motion-ease: cubic-bezier(0.16, 1, 0.3, 1);
+html[data-ash-animation="elegant"] {
+  --ash-motion-duration: 240ms;
+  --ash-motion-ease: cubic-bezier(0.16, 1, 0.3, 1);
   scroll-behavior: smooth;
 }
 
-html[data-hermes-animation="disabled"] *,
-html[data-hermes-animation="disabled"] *::before,
-html[data-hermes-animation="disabled"] *::after {
+html[data-ash-animation="disabled"] *,
+html[data-ash-animation="disabled"] *::before,
+html[data-ash-animation="disabled"] *::after {
   animation-duration: 0.001ms !important;
   animation-iteration-count: 1 !important;
   scroll-behavior: auto !important;
@@ -124,17 +133,36 @@ html[data-hermes-animation="disabled"] *::after {
   --border: 240 3.7% 15.9%;
   --input: 240 3.7% 15.9%;
   --ring: 240 4.9% 83.9%;
-  --sidebar: 240 10% 5%;
+  --sidebar: 240 10% 3.9%;
+  --ash-sidebar-control-active: hsl(0 0% 100% / 0.09);
+  --ash-sidebar-control-hover: hsl(0 0% 100% / 0.07);
+  --ash-sidebar-notice-bg: hsl(0 0% 100% / 0.04);
+  --ash-sidebar-notice-border: hsl(0 0% 100% / 0.1);
+  --ash-panel-border: hsl(0 0% 100% / 0.08);
+  --ash-sidebar-resize-active: hsl(0 0% 100% / 0.28);
+  --ash-sidebar-resize-hover: hsl(0 0% 100% / 0.18);
+  --ash-sidebar-skeleton: hsl(0 0% 100% / 0.12);
+  --ash-sidebar-surface: hsl(var(--card));
 }
 
 * {
   border-color: hsl(var(--border));
+  overscroll-behavior: none;
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 html,
 body,
 #root {
   height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 html {
@@ -180,19 +208,15 @@ select {
   font: inherit;
 }
 
-.hermes-sidebar-surface {
-  background: hsl(var(--sidebar) / 0.36);
+.ash-sidebar-surface {
+  background: var(--ash-sidebar-surface);
 }
 
-.dark .hermes-sidebar-surface {
-  background: hsl(var(--sidebar) / 0.3);
-}
-
-html[data-hermes-translucent-sidebar="false"] .hermes-sidebar-surface {
+html[data-ash-translucent-sidebar="false"] .ash-sidebar-surface {
   background: hsl(var(--sidebar));
 }
 
-.hermes-chat-input-shell {
+.ash-chat-input-shell {
   border: 1px solid hsl(var(--border)) !important;
   border-radius: 12px !important;
   background: hsl(var(--card)) !important;
@@ -201,17 +225,17 @@ html[data-hermes-translucent-sidebar="false"] .hermes-sidebar-surface {
     0 1px 2px hsl(0 0% 0% / 0.08) !important;
 }
 
-.hermes-chat-composer-body {
+.ash-chat-composer-body {
   overflow-y: auto !important;
   padding-block: 18px 6px !important;
   padding-inline: 20px !important;
 }
 
-.hermes-chat-composer-footer {
+.ash-chat-composer-footer {
   width: 100%;
 }
 
-.hermes-chat-action-bar {
+.ash-chat-action-bar {
   display: flex !important;
   align-items: center !important;
   flex-wrap: wrap !important;
@@ -220,90 +244,90 @@ html[data-hermes-translucent-sidebar="false"] .hermes-sidebar-surface {
   padding: 8px 12px 10px !important;
 }
 
-.hermes-chat-action-bar > * {
+.ash-chat-action-bar > * {
   width: auto !important;
 }
 
-.hermes-chat-editor :where(p) {
+.ash-chat-editor :where(p) {
   margin-block: 0;
 }
 
-div.hermes-composer-editor.hermes-composer-editor {
+div.ash-composer-editor.ash-composer-editor {
   min-height: 100%;
 }
 
-.hermes-composer-editor.hermes-composer-editor [contenteditable="true"] {
-  min-height: var(--hermes-composer-editable-min-height) !important;
+.ash-composer-editor.ash-composer-editor [contenteditable="true"] {
+  min-height: var(--ash-composer-editable-min-height) !important;
   outline: none;
 }
 
-.hermes-composer-editor-chat {
-  --hermes-composer-editable-min-height: 72px;
+.ash-composer-editor-chat {
+  --ash-composer-editable-min-height: 72px;
 }
 
-.hermes-composer-editor-home {
-  --hermes-composer-editable-min-height: 108px;
+.ash-composer-editor-home {
+  --ash-composer-editable-min-height: 108px;
 }
 
-.hermes-lobe-markdown {
+.ash-lobe-markdown {
   color: hsl(var(--foreground));
   letter-spacing: 0;
 }
 
-.hermes-lobe-markdown :where(p) {
+.ash-lobe-markdown :where(p) {
   margin-block: 0.28em;
   letter-spacing: 0;
 }
 
-.hermes-lobe-markdown :where(p:first-child, ul:first-child, ol:first-child, pre:first-child, table:first-child) {
+.ash-lobe-markdown :where(p:first-child, ul:first-child, ol:first-child, pre:first-child, table:first-child) {
   margin-block-start: 0;
 }
 
-.hermes-lobe-markdown :where(p:last-child, ul:last-child, ol:last-child, pre:last-child, table:last-child) {
+.ash-lobe-markdown :where(p:last-child, ul:last-child, ol:last-child, pre:last-child, table:last-child) {
   margin-block-end: 0;
 }
 
-.hermes-lobe-markdown :where(h1, h2, h3, h4, h5, h6) {
+.ash-lobe-markdown :where(h1, h2, h3, h4, h5, h6) {
   margin-block: 0.95em 0.45em;
   letter-spacing: 0;
 }
 
-.hermes-lobe-markdown :where(hr) {
+.ash-lobe-markdown :where(hr) {
   margin-block: 18px;
   border-color: hsl(var(--border));
   opacity: 0.9;
 }
 
-.hermes-lobe-markdown :where(blockquote) {
+.ash-lobe-markdown :where(blockquote) {
   margin-block: 0.65em;
   border-inline-start-color: hsl(var(--border));
 }
 
-.hermes-lobe-markdown :where(ul, ol) {
+.ash-lobe-markdown :where(ul, ol) {
   margin-block: 0.5em;
 }
 
-.hermes-lobe-markdown :where(pre) {
+.ash-lobe-markdown :where(pre) {
   margin-block: 0.7em;
-  border-radius: var(--hermes-radius-lg);
+  border-radius: var(--ash-radius-lg);
   overflow: hidden;
 }
 
-.hermes-lobe-markdown :where(code:not(:has(span))) {
+.ash-lobe-markdown :where(code:not(:has(span))) {
   border-color: hsl(var(--border));
   background: hsl(var(--muted));
 }
 
-.hermes-lobe-markdown :where(div:has(> table)) {
+.ash-lobe-markdown :where(div:has(> table)) {
   overflow-x: auto;
   max-width: 100%;
   margin-block: 0.75em;
   border: 1px solid hsl(var(--border));
-  border-radius: var(--hermes-radius-lg);
+  border-radius: var(--ash-radius-lg);
   background: hsl(var(--card));
 }
 
-.hermes-lobe-markdown :where(div:has(> table)) > table {
+.ash-lobe-markdown :where(div:has(> table)) > table {
   display: table;
   width: auto;
   min-width: min(100%, 560px);
@@ -313,90 +337,90 @@ div.hermes-composer-editor.hermes-composer-editor {
   box-shadow: none;
 }
 
-.hermes-lobe-markdown :where(table thead) {
+.ash-lobe-markdown :where(table thead) {
   background: hsl(var(--muted));
 }
 
-.hermes-lobe-markdown :where(table tr) {
+.ash-lobe-markdown :where(table tr) {
   box-shadow: inset 0 -1px 0 hsl(var(--border));
 }
 
-.hermes-lobe-markdown :where(table tr:last-child) {
+.ash-lobe-markdown :where(table tr:last-child) {
   box-shadow: none;
 }
 
-.hermes-lobe-markdown :where(table th, table td) {
+.ash-lobe-markdown :where(table th, table td) {
   min-width: 108px;
   padding: 11px 14px;
   border-inline-end: 1px solid hsl(var(--border));
   line-height: 1.55;
 }
 
-.hermes-lobe-markdown :where(table th:last-child, table td:last-child) {
+.ash-lobe-markdown :where(table th:last-child, table td:last-child) {
   border-inline-end: 0;
 }
 
-.hermes-lobe-markdown :where(.table-copy-button) {
+.ash-lobe-markdown :where(.table-copy-button) {
   inset-block-start: 14px !important;
   inset-inline-end: 8px !important;
-  border-radius: var(--hermes-radius-md) !important;
+  border-radius: var(--ash-radius-md) !important;
 }
 
-.hermes-lobe-markdown :where(.ant-image) {
+.ash-lobe-markdown :where(.ant-image) {
   display: block;
   max-width: min(100%, 720px);
   margin-block: 0.75em;
 }
 
-.hermes-lobe-markdown :where(img, .ant-image-img) {
+.ash-lobe-markdown :where(img, .ant-image-img) {
   max-width: 100%;
   height: auto;
-  border-radius: var(--hermes-radius-lg);
+  border-radius: var(--ash-radius-lg);
   object-fit: contain;
 }
 
-.hermes-lobe-markdown :where(.ant-image-img) {
+.ash-lobe-markdown :where(.ant-image-img) {
   max-height: 360px;
   background: hsl(var(--muted));
 }
 
-.hermes-lobe-markdown-user {
+.ash-lobe-markdown-user {
   color: hsl(var(--foreground));
 }
 
-.hermes-lobe-markdown-user :where(h1, h2, h3, h4, h5, h6, p, li, strong, em) {
+.ash-lobe-markdown-user :where(h1, h2, h3, h4, h5, h6, p, li, strong, em) {
   color: hsl(var(--foreground));
 }
 
-.hermes-lobe-markdown-user :where(a) {
+.ash-lobe-markdown-user :where(a) {
   color: hsl(var(--foreground));
   text-decoration-color: hsl(var(--foreground) / 0.45);
 }
 
-.hermes-lobe-markdown-user :where(blockquote) {
+.ash-lobe-markdown-user :where(blockquote) {
   border-inline-start-color: hsl(var(--border));
   color: hsl(var(--muted-foreground));
 }
 
-.hermes-lobe-markdown-user :where(code:not(:has(span))) {
+.ash-lobe-markdown-user :where(code:not(:has(span))) {
   border-color: hsl(var(--border));
   background: hsl(var(--background) / 0.82);
   color: hsl(var(--foreground));
 }
 
-.hermes-lobe-markdown-user :where(div:has(> table)) {
+.ash-lobe-markdown-user :where(div:has(> table)) {
   border-color: hsl(var(--border));
   background: hsl(var(--card));
 }
 
-.hermes-lobe-markdown-user :where(table thead) {
+.ash-lobe-markdown-user :where(table thead) {
   background: hsl(var(--muted));
 }
 
-.hermes-lobe-markdown-user :where(table tr) {
+.ash-lobe-markdown-user :where(table tr) {
   box-shadow: inset 0 -1px 0 hsl(var(--border));
 }
 
-.hermes-lobe-markdown-user :where(table th, table td) {
+.ash-lobe-markdown-user :where(table th, table td) {
   border-inline-end-color: hsl(var(--border));
 }

@@ -1,12 +1,12 @@
 [package]
-name = "hermes"
+name = "ash"
 version = "0.1.0"
-description = "Local-first desktop client for Hermes Agent"
-authors = ["Hermes Contributors"]
+description = "Ash is a local-first desktop client for Hermes Agent"
+authors = ["Ash Contributors"]
 edition = "2021"
 
 [lib]
-name = "hermes_lib"
+name = "ash_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

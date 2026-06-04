@@ -43,9 +43,9 @@ import {
   animationModes,
   chatTransitionModes,
   contextMenuModes,
-  defaultHermesSettings,
+  defaultAshSettings,
   themeModes,
-  useHermesSettings,
+  useAshSettings,
 } from "@/features/settings/settings-store";
 import type { AppUpdateInfo, AppUpdateProgress } from "@/lib/app-updater";
 import { checkForAppUpdate, getCurrentAppVersion, installPendingAppUpdate } from "@/lib/app-updater";
@@ -54,11 +54,11 @@ import type {
   AnimationMode,
   ChatTransitionMode,
   ContextMenuMode,
-  HermesSettingsStorage,
+  AshSettingsStorage,
   ThemeMode,
 } from "@/features/settings/settings-store";
 import { errorMessage } from "@/lib/errors";
-import { hermesQueryKeys, useHermesApi } from "@/lib/hermes/queries";
+import { ashQueryKeys, useAshApi } from "@/lib/hermes/queries";
 import {
   checkDashboard,
   isTauriRuntime,
@@ -70,8 +70,8 @@ import {
   stopDashboard,
 } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
-import type { ModelInfoResponse } from "@/types/hermes-dashboard";
-import type { HermesStatus, RuntimeCommandResult } from "@/types/hermes";
+import type { ModelInfoResponse } from "@/types/runtime-dashboard";
+import type { RuntimeStatus, RuntimeCommandResult } from "@/types/runtime";
 
 type RuntimeAction = "prepare" | "start" | "stop" | "status" | "doctor" | "portal" | "logs";
 type SettingsSectionId = "appearance" | "chat" | "model" | "providers" | "messaging" | "runtime" | "advanced" | "about";
@@ -93,7 +93,7 @@ const actionLabels: Record<RuntimeAction, string> = {
   logs: "打开日志",
 };
 
-const runtimeModeLabels: Record<HermesStatus["mode"], string> = {
+const runtimeModeLabels: Record<RuntimeStatus["mode"], string> = {
   "browser-preview": "浏览器预览",
   "local-app": "桌面托管",
   "local-existing": "本机已有",
@@ -205,7 +205,7 @@ function isDeveloperToolsEnabled() {
   }
 
   try {
-    return window.localStorage.getItem("hermesDeveloperTools") === "1";
+    return window.localStorage.getItem("ashDeveloperTools") === "1";
   } catch {
     return false;
   }
@@ -213,13 +213,13 @@ function isDeveloperToolsEnabled() {
 
 export function SettingsPage() {
   const queryClient = useQueryClient();
-  const { resetSettings, storage } = useHermesSettings();
+  const { resetSettings, storage } = useAshSettings();
   const [activeSection, setActiveSection] = useState<SettingsSectionId>("appearance");
   const [lastResult, setLastResult] = useState<RuntimeCommandResult | null>(null);
   const [lastAction, setLastAction] = useState<RuntimeAction | null>(null);
   const tauriRuntime = useMemo(() => isTauriRuntime(), []);
   const developerToolsEnabled = useMemo(() => isDeveloperToolsEnabled(), []);
-  const { apiReady, apiUrl, client, sessionToken, status } = useHermesApi();
+  const { apiReady, apiUrl, client, sessionToken, status } = useAshApi();
 
   const modelInfo = useQuery({
     enabled: apiReady,
@@ -250,7 +250,7 @@ export function SettingsPage() {
     },
     onSuccess: (result, action) => {
       setLastResult(result);
-      void queryClient.invalidateQueries({ queryKey: hermesQueryKeys.runtimeStatus });
+      void queryClient.invalidateQueries({ queryKey: ashQueryKeys.runtimeStatus });
 
       if (result.success) {
         toast.success(`${actionLabels[action]}已完成`);
@@ -380,7 +380,7 @@ export function SettingsPage() {
 }
 
 function AppearanceSection() {
-  const { settings, updateSettings } = useHermesSettings();
+  const { settings, updateSettings } = useAshSettings();
 
   return (
     <div className="space-y-8">
@@ -439,7 +439,7 @@ function AppearanceSection() {
 }
 
 function ChatAppearanceSection() {
-  const { settings, updateSettings } = useHermesSettings();
+  const { settings, updateSettings } = useAshSettings();
 
   return (
     <LobeRuntimeProvider>
@@ -542,7 +542,7 @@ function RuntimeSection({
   lastAction: RuntimeAction | null;
   lastResult: RuntimeCommandResult | null;
   ready: boolean;
-  runtime?: HermesStatus;
+  runtime?: RuntimeStatus;
   runtimeError: unknown;
   runtimeLoading: boolean;
   tauriRuntime: boolean;
@@ -642,7 +642,7 @@ function RuntimeSection({
         </div>
         {!tauriRuntime ? (
           <p className="border-t border-border/70 px-4 py-3 text-sm text-muted-foreground">
-            本地服务操作仅在 Tauri 桌面应用中可用。浏览器预览只显示界面。
+            本地服务操作仅在 Ash 桌面应用中可用。浏览器预览只显示界面。
           </p>
         ) : null}
       </SettingsGroup>
@@ -697,16 +697,16 @@ function AdvancedSection({
   developerToolsEnabled: boolean;
   lastAction: RuntimeAction | null;
   lastResult: RuntimeCommandResult | null;
-  runtime?: HermesStatus;
+  runtime?: RuntimeStatus;
 }) {
   return (
     <div className="space-y-6">
       <SettingsGroup title="技术详情">
         <SettingsRow label="运行时根目录" description={runtime?.managedRoot ?? "检查中"} action={<ValuePill value="managedRoot" mono />} />
-        <SettingsRow label="Hermes 主目录" description={runtime?.hermesHome ?? "检查中"} action={<ValuePill value="hermesHome" mono />} />
+        <SettingsRow label="Agent 主目录" description={runtime?.hermesHome ?? "检查中"} action={<ValuePill value="hermesHome" mono />} />
         <SettingsRow label="配置文件" description={runtime?.configPath ?? "检查中"} action={<ValuePill value="config" mono />} />
         <SettingsRow label="日志文件" description={runtime?.logPath ?? "检查中"} action={<ValuePill value="desktop.log" mono />} />
-        <SettingsRow label="Hermes CLI" description={runtime?.path ?? "未找到"} action={<ValuePill value="cli" mono />} />
+        <SettingsRow label="Agent CLI" description={runtime?.path ?? "未找到"} action={<ValuePill value="cli" mono />} />
         <SettingsRow label="Python" description={runtime?.pythonPath ?? "未找到"} action={<ValuePill value="python" mono />} />
         <SettingsRow label="Dashboard API" description={runtime?.apiUrl ?? "http://127.0.0.1:9120"} action={<ValuePill value="api" mono />} />
         <SettingsRow label="TUI WebSocket" description={runtime?.wsUrl ?? "dashboard 启动后显示"} action={<ValuePill value="ws" mono />} />
@@ -745,8 +745,8 @@ function AboutSection({
   storage,
 }: {
   modelInfo?: ModelInfoResponse;
-  runtime?: HermesStatus;
-  storage: HermesSettingsStorage;
+  runtime?: RuntimeStatus;
+  storage: AshSettingsStorage;
 }) {
   const tauriRuntime = useMemo(() => isTauriRuntime(), []);
   const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
@@ -764,9 +764,9 @@ function AboutSection({
       setUpdateProgress(null);
 
       if (info.available) {
-        toast.success(`发现 Hermes ${info.version}`);
+        toast.success(`发现 Ash ${info.version}`);
       } else {
-        toast.success("Hermes 已是最新版本");
+        toast.success("Ash 已是最新版本");
       }
     },
     onError: (error) => {
@@ -783,7 +783,7 @@ function AboutSection({
       setUpdateProgress({ downloaded: 0, percent: null, total: null });
     },
     onSuccess: () => {
-      toast.success("更新已安装，正在重启 Hermes");
+      toast.success("更新已安装，正在重启 Ash");
     },
     onError: (error) => {
       toast.error(`安装更新失败：${errorMessage(error)}`);
@@ -795,7 +795,7 @@ function AboutSection({
 
   return (
     <div className="space-y-6">
-      <SettingsGroup title="Hermes Desktop">
+      <SettingsGroup title="Ash">
         <SettingsRow
           label="桌面版本"
           description="应用版本用于 GitHub Releases 和自动更新版本比较。"
@@ -881,7 +881,7 @@ function appUpdateDescription({
   tauriRuntime: boolean;
 }) {
   if (!tauriRuntime) {
-    return "浏览器预览不能检查更新，请在 Hermes 桌面应用中使用。";
+    return "浏览器预览不能检查更新，请在 Ash 桌面应用中使用。";
   }
 
   if (installing) {
@@ -889,7 +889,7 @@ function appUpdateDescription({
   }
 
   if (info?.available) {
-    const notes = info.body ? `发布说明：${info.body}` : "安装后会自动重启 Hermes。";
+    const notes = info.body ? `发布说明：${info.body}` : "安装后会自动重启 Ash。";
     return `发现新版本 ${info.version}。${notes}`;
   }
 
@@ -1232,7 +1232,7 @@ function ChatPreviewPanel() {
 function CodePreviewPanel() {
   const sample = [
     "```ts",
-    "const task = await hermes.chat(\"整理今天的本地任务\");",
+    "const task = await ash.chat(\"整理今天的本地任务\");",
     "console.log(task.summary);",
     "```",
   ].join("\n");
@@ -1393,7 +1393,7 @@ function LogPreview({ lines }: { lines: string[] }) {
   );
 }
 
-function runtimeSummary(runtime?: HermesStatus) {
+function runtimeSummary(runtime?: RuntimeStatus) {
   if (!runtime) {
     return "正在检查本地服务。";
   }

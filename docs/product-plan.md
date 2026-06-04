@@ -1,4 +1,4 @@
-# Hermes Product Plan
+# Ash Product Plan
 
 ## Purpose
 
@@ -30,7 +30,7 @@ capabilities to remove setup friction:
 
 ## Product Positioning
 
-Hermes Desktop is a local-first personal AI assistant control center.
+Ash is a local-first personal AI assistant control center.
 
 It should feel closer to Tencent Marvis, OpenClaw companion apps, or a native
 system assistant than to Cherry Studio or LobeHub. The user should not think:

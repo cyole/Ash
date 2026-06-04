@@ -27,11 +27,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { errorMessage } from "@/lib/errors";
-import { hermesQueryKeys, useHermesApi } from "@/lib/hermes/queries";
+import { ashQueryKeys, useAshApi } from "@/lib/hermes/queries";
 import { getWeixinQrCode, pollWeixinQrStatus } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import type { WeixinQrStatus } from "@/lib/tauri";
-import type { MessagingEnvVarInfo, MessagingPlatformInfo, MessagingPlatformTestResponse } from "@/types/hermes-dashboard";
+import type { MessagingEnvVarInfo, MessagingPlatformInfo, MessagingPlatformTestResponse } from "@/types/runtime-dashboard";
 
 type EditMap = Record<string, Record<string, string>>;
 type StatusTone = "danger" | "neutral" | "success" | "warning";
@@ -106,7 +106,7 @@ const FIELD_COPY: Record<string, FieldCopy> = {
     placeholder: "8080",
   },
   BLUEBUBBLES_ALLOWED_USERS: {
-    help: "逗号分隔允许使用 Hermes 的 iMessage 用户。",
+    help: "逗号分隔允许使用 Ash 的 iMessage 用户。",
     label: "允许用户",
   },
   BLUEBUBBLES_PASSWORD: {
@@ -197,7 +197,7 @@ const FIELD_COPY: Record<string, FieldCopy> = {
     placeholder: "@hermes:example.org",
   },
   QQ_ALLOWED_USERS: {
-    help: "逗号分隔允许使用 Hermes 的 QQ 用户。",
+    help: "逗号分隔允许使用 Ash 的 QQ 用户。",
     label: "允许用户",
   },
   QQ_APP_ID: {
@@ -210,7 +210,7 @@ const FIELD_COPY: Record<string, FieldCopy> = {
     label: "Signal 账号",
   },
   SIGNAL_ALLOWED_USERS: {
-    help: "逗号分隔允许使用 Hermes 的 Signal 用户。",
+    help: "逗号分隔允许使用 Ash 的 Signal 用户。",
     label: "允许用户",
   },
   SIGNAL_HTTP_URL: {
@@ -290,7 +290,7 @@ const FIELD_COPY: Record<string, FieldCopy> = {
     label: "Bot Token",
   },
   WHATSAPP_ALLOWED_USERS: {
-    help: "逗号分隔允许使用 Hermes 的 WhatsApp 用户。",
+    help: "逗号分隔允许使用 Ash 的 WhatsApp 用户。",
     label: "允许用户",
   },
   WHATSAPP_ENABLED: {
@@ -321,7 +321,7 @@ const PLATFORM_COPY: Record<string, string> = {
   wecom: "企业微信群机器人是 send-only；需要双向消息时使用 WeCom app。",
   wecom_callback: "配置企业微信自建应用 callback，填写 corp、agent、token 和 AES key。",
   weixin: "微信个人号接入走 Tencent iLink Bot API。扫码后保存 Account ID 和 Bot Token。",
-  whatsapp: "使用 Hermes 自带 WhatsApp bridge，首次运行需要扫码授权。",
+  whatsapp: "使用 Ash 自带 WhatsApp bridge，首次运行需要扫码授权。",
 };
 
 const PLATFORM_ICON: Record<string, ReactNode> = {
@@ -343,7 +343,7 @@ const PLATFORM_ICON: Record<string, ReactNode> = {
 };
 
 export function MessagingSettingsPanel() {
-  const { apiReady, apiUrl, client, sessionToken, status, tauriRuntime } = useHermesApi();
+  const { apiReady, apiUrl, client, sessionToken, status, tauriRuntime } = useAshApi();
   const [edits, setEdits] = useState<EditMap>({});
   const [query, setQuery] = useState("");
   const [savingKey, setSavingKey] = useState<string | null>(null);
@@ -353,7 +353,7 @@ export function MessagingSettingsPanel() {
 
   const platformsQuery = useQuery({
     enabled: apiReady,
-    queryKey: hermesQueryKeys.messagingPlatforms(apiUrl, Boolean(sessionToken)),
+    queryKey: ashQueryKeys.messagingPlatforms(apiUrl, Boolean(sessionToken)),
     queryFn: () => client.getMessagingPlatforms(),
     refetchInterval: 6_000,
     refetchIntervalInBackground: false,
@@ -620,7 +620,7 @@ export function MessagingSettingsPanel() {
     return (
       <PanelNotice
         icon={<Loader2 className="h-4 w-4 animate-spin" />}
-        title="正在连接 Hermes dashboard"
+        title="正在连接 本地 dashboard"
         description="消息渠道配置需要本地 dashboard API 就绪后读取。"
       />
     );

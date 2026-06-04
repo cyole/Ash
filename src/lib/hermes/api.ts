@@ -49,10 +49,10 @@ import type {
   StatusResponse,
   ToolsetConfig,
   ToolsetInfo,
-} from "@/types/hermes-dashboard";
-import type { RuntimeDashboardApiInput } from "@/types/hermes";
+} from "@/types/runtime-dashboard";
+import type { RuntimeDashboardApiInput } from "@/types/runtime";
 
-export const DEFAULT_HERMES_API_URL = "http://127.0.0.1:9120";
+export const DEFAULT_DASHBOARD_API_URL = "http://127.0.0.1:9120";
 
 const MAX_ERROR_BODY_LENGTH = 1_000;
 const SESSION_TOKEN_HEADER = "X-Hermes-Session-Token";
@@ -82,7 +82,7 @@ export class HermesApiError extends Error {
 
   constructor(status: number, statusText: string, body: string) {
     const detail = trimErrorBody(body);
-    super(`Hermes API request failed: ${status} ${statusText}${detail ? `: ${detail}` : ""}`);
+    super(`Runtime API request failed: ${status} ${statusText}${detail ? `: ${detail}` : ""}`);
     this.name = "HermesApiError";
     this.body = body;
     this.status = status;
@@ -97,7 +97,7 @@ export class HermesApiClient implements HermesBackend {
   private readonly sessionToken?: string;
 
   constructor(options: HermesApiClientOptions = {}) {
-    this.baseUrl = normalizeBaseUrl(options.baseUrl ?? DEFAULT_HERMES_API_URL);
+    this.baseUrl = normalizeBaseUrl(options.baseUrl ?? DEFAULT_DASHBOARD_API_URL);
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
     this.requestImpl = options.requestImpl;
     this.sessionToken = options.sessionToken;
@@ -626,7 +626,7 @@ async function readResponseText(response: Response) {
   try {
     return await response.text();
   } catch (error) {
-    console.error("Failed to read Hermes API error response", error);
+    console.error("Failed to read runtime API error response", error);
     return "";
   }
 }
@@ -674,13 +674,13 @@ function requestBodyValue(body: BodyInit | null | undefined) {
   }
 
   if (typeof body !== "string") {
-    throw new Error("Hermes dashboard API 代理只支持 JSON 字符串请求体。");
+    throw new Error("本地 dashboard API 代理只支持 JSON 字符串请求体。");
   }
 
   try {
     return JSON.parse(body) as unknown;
   } catch (error) {
-    throw new Error(`Hermes dashboard API 请求体不是有效 JSON：${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`本地 dashboard API 请求体不是有效 JSON：${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -696,7 +696,7 @@ function requestMethodValue(method: string | undefined) {
     return normalized;
   }
 
-  throw new Error(`不支持的 Hermes dashboard API 方法：${normalized}。`);
+  throw new Error(`不支持的 本地 dashboard API 方法：${normalized}。`);
 }
 
 function normalizeModelOptions(payload: ModelOptionsPayload): HermesModel[] {

@@ -30,13 +30,13 @@ import {
 } from "@/features/chat/chat-session-activity";
 import { ComposerResizeHandle, useComposerResize } from "@/features/chat/components/ComposerResizeHandle";
 import { MarkdownMessage } from "@/features/chat/components/MarkdownMessage";
-import { useHermesSettings } from "@/features/settings/settings-store";
+import { useAshSettings } from "@/features/settings/settings-store";
 import { errorMessage } from "@/lib/errors";
 import type { HermesMessage, HermesSession, HermesStreamEvent } from "@/lib/hermes";
-import { hermesQueryKeys, useHermesApi } from "@/lib/hermes/queries";
+import { ashQueryKeys, useAshApi } from "@/lib/hermes/queries";
 import { cn } from "@/lib/utils";
-import { createHermesTuiSession, interruptHermesSession, streamHermesSessionChat } from "@/lib/tauri";
-import type { ModelInfoResponse } from "@/types/hermes-dashboard";
+import { createRuntimeTuiSession, interruptRuntimeSession, streamRuntimeSessionChat } from "@/lib/tauri";
+import type { ModelInfoResponse } from "@/types/runtime-dashboard";
 
 interface ChatMessage {
   id: string;
@@ -118,7 +118,7 @@ type UsageBySession = Record<string, ChatUsageStats>;
 const suggestedPrompts = [
   "整理一下今天最重要的三个工作项",
   "帮我把这个想法拆成可执行计划",
-  "检查当前 Hermes 配置还缺什么",
+  "检查当前 Ash 配置还缺什么",
 ] as const;
 
 const localCommands = [
@@ -128,7 +128,7 @@ const localCommands = [
 ] as const satisfies readonly LocalCommand[];
 
 const composerEditorPlugins = [ReactListPlugin, ReactLinkPlugin, ReactCodeblockPlugin];
-const draftStorageKey = "hermes.chat.drafts.v1";
+const draftStorageKey = "ash.chat.drafts.v1";
 
 const messageTransitionClasses = {
   fadeIn: "animate-in fade-in duration-200",
@@ -141,8 +141,8 @@ export function ChatPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { settings } = useHermesSettings();
-  const { apiReady, apiUrl, client, sessionToken, status, tauriRuntime } = useHermesApi();
+  const { settings } = useAshSettings();
+  const { apiReady, apiUrl, client, sessionToken, status, tauriRuntime } = useAshApi();
   const selectedSessionId = searchParams.get(chatSessionSearchParam);
   const [messagesBySession, setMessagesBySession] = useState<MessagesBySession>({});
   const [draft, setDraft] = useState("");
@@ -169,13 +169,13 @@ export function ChatPage() {
 
   const sessions = useQuery({
     enabled: apiReady,
-    queryKey: hermesQueryKeys.sessions(apiUrl, Boolean(sessionToken)),
+    queryKey: ashQueryKeys.sessions(apiUrl, Boolean(sessionToken)),
     queryFn: () => client.listSessions(),
   });
 
   const sessionMessages = useQuery({
     enabled: apiReady && Boolean(selectedSessionId),
-    queryKey: hermesQueryKeys.sessionMessages(apiUrl, Boolean(sessionToken), selectedSessionId),
+    queryKey: ashQueryKeys.sessionMessages(apiUrl, Boolean(sessionToken), selectedSessionId),
     queryFn: () => selectedSessionId ? client.listSessionMessages(selectedSessionId) : Promise.resolve([]),
   });
 
@@ -404,7 +404,7 @@ export function ChatPage() {
     );
 
     if (runtimeSessionId) {
-      void interruptHermesSession(runtimeSessionId).catch((error) => {
+      void interruptRuntimeSession(runtimeSessionId).catch((error) => {
         toast.error(`停止失败：${errorMessage(error)}`);
       });
     }
@@ -431,7 +431,7 @@ export function ChatPage() {
     }
 
     if (!apiReady) {
-      setSendError("Hermes API 认证仍在读取中。");
+      setSendError("本地服务认证仍在读取中。");
       return;
     }
 
@@ -503,7 +503,7 @@ export function ChatPage() {
       const controller = new AbortController();
       abortControllersRef.current.set(sessionId, controller);
 
-      const stream = streamHermesSessionChat({
+      const stream = streamRuntimeSessionChat({
         message: prompt,
         sessionId,
         onRuntimeSession: (runtimeSessionId, storedSessionId) => {
@@ -864,7 +864,7 @@ export function ChatPage() {
 
   async function createChatSession(prompt: string) {
     const title = titleFromPrompt(prompt);
-    const session = await createHermesTuiSession();
+    const session = await createRuntimeTuiSession();
     const now = new Date().toISOString();
     runtimeSessionIdsRef.current.set(session.storedSessionId, session.sessionId);
     const storedSession: HermesSession = {
@@ -876,7 +876,7 @@ export function ChatPage() {
     };
     setSelectedSession(session.storedSessionId, true);
     queryClient.setQueryData<HermesSession[]>(
-      hermesQueryKeys.sessions(apiUrl, Boolean(sessionToken)),
+      ashQueryKeys.sessions(apiUrl, Boolean(sessionToken)),
       (current) => mergeSession(current, storedSession),
     );
     return session;
@@ -884,9 +884,9 @@ export function ChatPage() {
 
   async function refreshChatQueries(sessionId: string) {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: hermesQueryKeys.sessions(apiUrl, Boolean(sessionToken)) }),
+      queryClient.invalidateQueries({ queryKey: ashQueryKeys.sessions(apiUrl, Boolean(sessionToken)) }),
       queryClient.invalidateQueries({
-        queryKey: hermesQueryKeys.sessionMessages(apiUrl, Boolean(sessionToken), sessionId),
+        queryKey: ashQueryKeys.sessionMessages(apiUrl, Boolean(sessionToken), sessionId),
       }),
     ]);
   }
@@ -1070,7 +1070,7 @@ export function ChatPage() {
                   onPressEnter={handleComposerPressEnter}
                   onTextChange={updateDraftFromEditor}
                   pasteMarkdownAutoConvertThreshold={3}
-                  placeholder={runtimeReady ? "给 Hermes 发消息，输入 / 可使用本地命令" : "本地服务就绪后可以开始聊天"}
+                  placeholder={runtimeReady ? "给 Ash 发消息，输入 / 可使用本地命令" : "本地服务就绪后可以开始聊天"}
                   plugins={composerEditorPlugins}
                   style={{
                     height: composerResize.height,
@@ -1078,7 +1078,7 @@ export function ChatPage() {
                   }}
                   type="text"
                   variant="chat"
-                  className="hermes-composer-editor hermes-composer-editor-chat h-full px-4 py-2 text-[15px] leading-6 text-foreground outline-none"
+                  className="ash-composer-editor ash-composer-editor-chat h-full px-4 py-2 text-[15px] leading-6 text-foreground outline-none"
                   theme={{
                     fontSize: 15,
                     lineHeight: 1.55,
@@ -1236,7 +1236,7 @@ function ChatMessageRow({
 function MessageAuthorLabel() {
   return (
     <div className="mb-1 flex items-center gap-2 text-[13px] font-medium leading-5 text-foreground">
-      <span>Hermes</span>
+      <span>Ash</span>
       <span className="text-xs font-normal text-muted-foreground">AI</span>
     </div>
   );
@@ -1458,7 +1458,7 @@ function CommandMenu({
   onSelect: (command: LocalCommand) => void;
 }) {
   return (
-    <div className="absolute bottom-full left-3 z-20 mb-2 w-[320px] overflow-hidden rounded-lg border border-border bg-popover shadow-[var(--hermes-shadow-popover)]">
+    <div className="absolute bottom-full left-3 z-20 mb-2 w-[320px] overflow-hidden rounded-lg border border-border bg-popover shadow-[var(--ash-shadow-popover)]">
       <div className="border-b border-border px-3 py-2 text-xs font-medium text-muted-foreground">本地命令</div>
       <div className="max-h-56 overflow-auto p-1">
         {commands.map((command, index) => (
@@ -1550,7 +1550,7 @@ function ChatEmptyState({ onUsePrompt }: { onUsePrompt: (prompt: string) => void
         <div className="mx-auto mb-5 flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-background text-foreground shadow-sm">
           <Sparkles className="h-5 w-5" />
         </div>
-        <h2 className="text-[22px] font-semibold tracking-normal">今天想让 Hermes 做什么？</h2>
+        <h2 className="text-[22px] font-semibold tracking-normal">今天想让 Ash 做什么？</h2>
         <p className="mx-auto mt-2 max-w-[480px] text-sm leading-6 text-muted-foreground">
           可以从一个问题、一个目标，或一段需要整理的上下文开始。
         </p>

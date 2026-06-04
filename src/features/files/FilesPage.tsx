@@ -15,7 +15,7 @@ export function FilesPage() {
       <EmptyState
         icon={<FileText className="h-4 w-4" />}
         title="尚未选择文件夹"
-        description="本地文件夹选择会使用 Tauri 原生对话框，让用户清楚知道 Hermes 可以访问哪些内容。"
+        description="本地文件夹选择会使用 Tauri 原生对话框，让用户清楚知道 Ash 可以访问哪些内容。"
       />
     </div>
   );

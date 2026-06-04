@@ -1,11 +1,11 @@
 # Reference Projects
 
 This document lists the projects we use as product, UX, and technical
-references for Hermes Desktop.
+references for Ash.
 
 These references are not templates to copy directly. They define the product
 surface, integration lessons, and visual/interaction direction we want to learn
-from while keeping Hermes Desktop simple, obvious, fast, and useful.
+from while keeping Ash simple, obvious, fast, and useful.
 
 ## Summary
 
@@ -166,7 +166,7 @@ Use this project as our agent workspace and product-feel reference.
 
 ## Product Synthesis
 
-Hermes Desktop should combine the references like this:
+Ash should combine the references like this:
 
 - `fathah/hermes-desktop`: how to integrate Hermes locally.
 - `EKKOLearnAI/hermes-web-ui`: what Hermes management features exist.

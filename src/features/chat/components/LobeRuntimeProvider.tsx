@@ -2,7 +2,7 @@ import { ConfigProvider, ThemeProvider } from "@lobehub/ui";
 import { m } from "motion/react";
 import type { ReactNode } from "react";
 import { createContext, useContext, useEffect, useState } from "react";
-import { useHermesSettings } from "@/features/settings/settings-store";
+import { useAshSettings } from "@/features/settings/settings-store";
 
 interface LobeRuntimeProviderProps {
   children: ReactNode;
@@ -15,7 +15,7 @@ export function useLobeRuntime() {
 }
 
 export function LobeRuntimeProvider({ children }: LobeRuntimeProviderProps) {
-  const { settings } = useHermesSettings();
+  const { settings } = useAshSettings();
   const [systemDark, setSystemDark] = useState(getSystemDarkPreference);
   const appearance = settings.themeMode === "dark" || (settings.themeMode === "system" && systemDark) ? "dark" : "light";
   const primaryColor = settings.accentColor === "green" ? "green" : settings.accentColor === "rose" ? "red" : "blue";

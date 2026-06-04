@@ -5,13 +5,13 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 port="${PORT:-8648}"
 
 case "$(uname -s)" in
-  Darwin*) default_app_data_dir="$HOME/Library/Application Support/app.hermes.desktop" ;;
-  Linux*) default_app_data_dir="${XDG_DATA_HOME:-$HOME/.local/share}/app.hermes.desktop" ;;
-  *) default_app_data_dir="$HOME/.hermes-desktop" ;;
+  Darwin*) default_app_data_dir="$HOME/Library/Application Support/dev.cyole.ash" ;;
+  Linux*) default_app_data_dir="${XDG_DATA_HOME:-$HOME/.local/share}/dev.cyole.ash" ;;
+  *) default_app_data_dir="$HOME/.ash-desktop" ;;
 esac
 
-app_data_dir="${HERMES_DESKTOP_APP_DATA_DIR:-$default_app_data_dir}"
-runtime_agent_dir="${HERMES_DESKTOP_RUNTIME_DIR:-$app_data_dir/runtime/hermes-agent}"
+app_data_dir="${ASH_DESKTOP_APP_DATA_DIR:-$default_app_data_dir}"
+runtime_agent_dir="${ASH_DESKTOP_RUNTIME_DIR:-$app_data_dir/runtime/hermes-agent}"
 web_ui_home="${HERMES_WEB_UI_HOME:-$app_data_dir/hermes-web-ui-home}"
 
 usage() {
@@ -25,11 +25,11 @@ Commands:
   restart        Restart official hermes-web-ui daemon
   status         Show official hermes-web-ui daemon status
   reset-login    Reset default login to admin / 123456
-  env            Print the Hermes Desktop environment used by this wrapper
+  env            Print the Ash environment used by this wrapper
 
 Environment overrides:
-  HERMES_DESKTOP_APP_DATA_DIR  App-managed Hermes Desktop data directory
-  HERMES_DESKTOP_RUNTIME_DIR   Hermes Agent runtime directory
+  ASH_DESKTOP_APP_DATA_DIR     App-managed Ash data directory
+  ASH_DESKTOP_RUNTIME_DIR      Hermes Agent runtime directory
   HERMES_WEB_UI_HOME           hermes-web-ui state directory
   PORT                         Web UI port, default: 8648
 EOF
@@ -59,16 +59,16 @@ EOF
 ensure_runtime() {
   if [ ! -x "$runtime_agent_dir/hermes" ]; then
     cat >&2 <<EOF
-Hermes Desktop runtime was not found at:
+Ash runtime was not found at:
   $runtime_agent_dir
 
-Start Hermes Desktop once or run its runtime prepare flow, then try again.
+Start Ash once or run its runtime prepare flow, then try again.
 EOF
     exit 1
   fi
 
   if [ ! -x "$runtime_agent_dir/venv/bin/python" ]; then
-    echo "Hermes Desktop runtime Python was not found at:" >&2
+    echo "Ash runtime Python was not found at:" >&2
     echo "  $runtime_agent_dir/venv/bin/python" >&2
     exit 1
   fi
@@ -85,7 +85,7 @@ export_web_ui_env() {
   export BIND_HOST="${BIND_HOST:-127.0.0.1}"
   export HERMES_WEB_UI_MANAGED_GATEWAY="${HERMES_WEB_UI_MANAGED_GATEWAY:-0}"
   export HERMES_WEB_UI_STOP_GATEWAYS_ON_SHUTDOWN="${HERMES_WEB_UI_STOP_GATEWAYS_ON_SHUTDOWN:-0}"
-  export HERMES_AGENT_BRIDGE_ENDPOINT="${HERMES_AGENT_BRIDGE_ENDPOINT:-ipc:///tmp/hermes-desktop-web-ui-bridge.sock}"
+  export HERMES_AGENT_BRIDGE_ENDPOINT="${HERMES_AGENT_BRIDGE_ENDPOINT:-ipc:///tmp/ash-web-ui-bridge.sock}"
 }
 
 print_env() {

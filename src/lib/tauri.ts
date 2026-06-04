@@ -2,18 +2,18 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type { HermesStreamEvent, SessionChatInput } from "@/lib/hermes/types";
 import type {
-  HermesStatus,
+  RuntimeStatus,
   RuntimeCommandResult,
   RuntimeConnection,
   RuntimeDashboardApiInput,
-} from "@/types/hermes";
+} from "@/types/runtime";
 
 export interface AppSettingsLoadResult {
   path: string;
   settings: Record<string, unknown> | null;
 }
 
-export interface HermesTuiSession {
+export interface RuntimeTuiSession {
   messageCount: number;
   messages: unknown[];
   sessionId: string;
@@ -35,6 +35,8 @@ export interface WeixinQrStatus {
   token?: string;
   userId?: string;
 }
+
+export type NativeThemeMode = "dark" | "light" | "system";
 
 interface TuiRpcEvent {
   payload: unknown;
@@ -74,7 +76,7 @@ export function isTauriRuntime() {
 export async function loadAppSettings(): Promise<AppSettingsLoadResult> {
   if (!isTauriRuntime()) {
     return {
-      path: "browser-preview:localStorage/hermes.settings.v1",
+      path: "browser-preview:localStorage/ash.settings.v1",
       settings: null,
     };
   }
@@ -85,7 +87,7 @@ export async function loadAppSettings(): Promise<AppSettingsLoadResult> {
 export async function saveAppSettings(settings: Record<string, unknown>): Promise<AppSettingsLoadResult> {
   if (!isTauriRuntime()) {
     return {
-      path: "browser-preview:localStorage/hermes.settings.v1",
+      path: "browser-preview:localStorage/ash.settings.v1",
       settings,
     };
   }
@@ -101,7 +103,15 @@ export async function setWindowTranslucency(enabled: boolean): Promise<void> {
   await invoke("window_translucency_set", { enabled });
 }
 
-export async function getRuntimeStatus(): Promise<HermesStatus> {
+export async function setWindowTheme(theme: NativeThemeMode): Promise<void> {
+  if (!isTauriRuntime()) {
+    return;
+  }
+
+  await invoke("window_theme_set", { theme });
+}
+
+export async function getRuntimeStatus(): Promise<RuntimeStatus> {
   if (!isTauriRuntime()) {
     return {
       installed: false,
@@ -119,7 +129,7 @@ export async function getRuntimeStatus(): Promise<HermesStatus> {
       bundledRuntimeArchive: "打开 Tauri 应用后可查看内置运行时路径。",
       bundledRuntimeFound: false,
       managedRoot: "打开 Tauri 应用后可查看托管运行时路径。",
-      hermesHome: "打开 Tauri 应用后可查看 Hermes 主目录路径。",
+      hermesHome: "打开 Tauri 应用后可查看 Agent 主目录路径。",
       configPath: "打开 Tauri 应用后可查看本地引擎配置路径。",
       legacyConfigPath: null,
       legacyConfigFound: false,
@@ -130,7 +140,7 @@ export async function getRuntimeStatus(): Promise<HermesStatus> {
     };
   }
 
-  return invoke<HermesStatus>("runtime_status");
+  return invoke<RuntimeStatus>("runtime_status");
 }
 
 export async function prepareRuntime(): Promise<RuntimeCommandResult> {
@@ -179,7 +189,7 @@ export async function getRuntimeConnection(): Promise<RuntimeConnection> {
 
 export async function dashboardApi<T>(input: RuntimeDashboardApiInput): Promise<T> {
   if (!isTauriRuntime()) {
-    throw new Error("Hermes dashboard API 代理仅在 Tauri 桌面应用中可用。");
+    throw new Error("本地 dashboard API 代理仅在 Ash 桌面应用中可用。");
   }
 
   return invoke<T>("runtime_dashboard_api", { input });
@@ -187,7 +197,7 @@ export async function dashboardApi<T>(input: RuntimeDashboardApiInput): Promise<
 
 export async function getWeixinQrCode(): Promise<WeixinQrCode> {
   if (!isTauriRuntime()) {
-    throw new Error("微信扫码登录仅在 Tauri 桌面应用中可用。");
+    throw new Error("微信扫码登录仅在 Ash 桌面应用中可用。");
   }
 
   return invoke<WeixinQrCode>("weixin_qrcode_get");
@@ -195,7 +205,7 @@ export async function getWeixinQrCode(): Promise<WeixinQrCode> {
 
 export async function pollWeixinQrStatus(qrcode: string, baseUrl?: string): Promise<WeixinQrStatus> {
   if (!isTauriRuntime()) {
-    throw new Error("微信扫码登录仅在 Tauri 桌面应用中可用。");
+    throw new Error("微信扫码登录仅在 Ash 桌面应用中可用。");
   }
 
   return invoke<WeixinQrStatus>("weixin_qrcode_poll", {
@@ -206,7 +216,7 @@ export async function pollWeixinQrStatus(qrcode: string, baseUrl?: string): Prom
   });
 }
 
-export async function createHermesTuiSession(title?: string): Promise<HermesTuiSession> {
+export async function createRuntimeTuiSession(title?: string): Promise<RuntimeTuiSession> {
   const rpc = await TuiRpcConnection.connect();
   try {
     const result = await rpc.request<TuiSessionResult>("session.create", {
@@ -219,7 +229,7 @@ export async function createHermesTuiSession(title?: string): Promise<HermesTuiS
   }
 }
 
-export async function interruptHermesSession(runtimeSessionId: string): Promise<void> {
+export async function interruptRuntimeSession(runtimeSessionId: string): Promise<void> {
   const sessionId = runtimeSessionId.trim();
   if (!sessionId) {
     return;
@@ -233,7 +243,7 @@ export async function interruptHermesSession(runtimeSessionId: string): Promise<
   }
 }
 
-export async function* streamHermesSessionChat(input: SessionChatInput): AsyncIterable<HermesStreamEvent> {
+export async function* streamRuntimeSessionChat(input: SessionChatInput): AsyncIterable<HermesStreamEvent> {
   if (input.signal?.aborted) {
     throw abortError();
   }
@@ -316,12 +326,12 @@ async function resolveTransientSession(
   };
 }
 
-function normalizeTuiSessionResult(result: TuiSessionResult): HermesTuiSession {
+function normalizeTuiSessionResult(result: TuiSessionResult): RuntimeTuiSession {
   const sessionId = typeof result.session_id === "string" ? result.session_id : "";
   const storedSessionId = typeof result.stored_session_id === "string" ? result.stored_session_id : sessionId;
 
   if (!sessionId || !storedSessionId) {
-    throw new Error("Hermes TUI 没有返回有效 session_id。");
+    throw new Error("本地 TUI 没有返回有效 session_id。");
   }
 
   return {
@@ -347,11 +357,11 @@ class TuiRpcConnection {
     socket.addEventListener("message", (event) => this.handleMessage(event.data));
     socket.addEventListener("close", () => {
       this.closed = true;
-      this.rejectPending(new Error("Hermes TUI WebSocket 已关闭。"));
+      this.rejectPending(new Error("本地 TUI WebSocket 已关闭。"));
       this.notify();
     });
     socket.addEventListener("error", () => {
-      this.failure = new Error("Hermes TUI WebSocket 连接失败。");
+      this.failure = new Error("本地 TUI WebSocket 连接失败。");
       this.rejectPending(this.failure);
       this.notify();
     });
@@ -361,7 +371,7 @@ class TuiRpcConnection {
     const connection = await getRuntimeConnection();
     const wsUrl = connection.wsUrl;
     if (!wsUrl) {
-      throw new Error("Hermes dashboard 没有返回 WebSocket 地址。");
+      throw new Error("本地 dashboard 没有返回 WebSocket 地址。");
     }
 
     const socket = new WebSocket(wsUrl);
@@ -377,13 +387,13 @@ class TuiRpcConnection {
 
     this.closed = true;
     this.socket.close();
-    this.rejectPending(new Error("Hermes TUI WebSocket 已关闭。"));
+    this.rejectPending(new Error("本地 TUI WebSocket 已关闭。"));
     this.notify();
   }
 
   request<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
     if (this.closed || this.socket.readyState !== WebSocket.OPEN) {
-      return Promise.reject(new Error("Hermes TUI WebSocket 未连接。"));
+      return Promise.reject(new Error("本地 TUI WebSocket 未连接。"));
     }
 
     const id = this.nextId;
@@ -464,7 +474,7 @@ class TuiRpcConnection {
     this.pending.delete(id);
     const response = message as JsonRpcResponse<unknown>;
     if (response.error) {
-      pending.reject(new Error(response.error.message ?? `Hermes TUI RPC ${id} 失败。`));
+      pending.reject(new Error(response.error.message ?? `本地 TUI RPC ${id} 失败。`));
       return;
     }
 
@@ -522,7 +532,7 @@ function waitForSocketOpen(socket: WebSocket, signal?: AbortSignal) {
     };
     const handleError = () => {
       cleanup();
-      reject(new Error("Hermes TUI WebSocket 连接失败。"));
+      reject(new Error("本地 TUI WebSocket 连接失败。"));
     };
     const handleAbort = () => {
       cleanup();

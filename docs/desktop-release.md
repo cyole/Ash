@@ -1,6 +1,6 @@
 # Desktop Release
 
-Hermes Desktop releases are built by `.github/workflows/release-desktop.yml`.
+Ash releases are built by `.github/workflows/release-desktop.yml`.
 
 The workflow builds:
 
@@ -21,7 +21,7 @@ It uploads normal installers, updater signatures, and `latest.json` to GitHub
 Releases. The app updater checks:
 
 ```txt
-https://github.com/cyole/Hermes/releases/latest/download/latest.json
+https://github.com/cyole/Ash/releases/latest/download/latest.json
 ```
 
 ## Required Secrets
@@ -32,7 +32,7 @@ key that matches the public key in `src-tauri/tauri.conf.json`.
 This workspace generated that key at:
 
 ```txt
-/Users/cyole/.tauri/hermes-desktop.key
+/Users/cyole/.tauri/ash-desktop.key
 ```
 
 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` is optional. The generated key currently
@@ -100,8 +100,8 @@ installers are built without Authenticode signing.
 3. Create and push a version tag:
 
    ```bash
-   git tag hermes-v0.1.0
-   git push origin hermes-v0.1.0
+   git tag ash-v0.1.0
+   git push origin ash-v0.1.0
    ```
 
 Tag releases are published immediately so installed apps can read

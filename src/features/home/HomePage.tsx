@@ -9,19 +9,19 @@ import { Button } from "@/components/ui/button";
 import type { PendingChatNavigationState } from "@/features/chat/chat-route";
 import { chatPathForSession } from "@/features/chat/chat-route";
 import { ComposerResizeHandle, useComposerResize } from "@/features/chat/components/ComposerResizeHandle";
-import { useHermesApi } from "@/lib/hermes/queries";
+import { useAshApi } from "@/lib/hermes/queries";
 
 const newChatEditorPlugins = [ReactListPlugin, ReactLinkPlugin, ReactCodeblockPlugin];
 
 const starterPrompts = [
   "整理一下今天最重要的三个工作项",
   "帮我把这个想法拆成可执行计划",
-  "检查当前 Hermes 配置还缺什么",
+  "检查当前 Ash 配置还缺什么",
 ] as const;
 
 export function HomePage() {
   const navigate = useNavigate();
-  const { apiReady, status, tauriRuntime } = useHermesApi();
+  const { apiReady, status, tauriRuntime } = useAshApi();
   const editor = useEditor();
   const composerResize = useComposerResize({ defaultHeight: 126, maxHeight: 360, minHeight: 126 });
   const [draft, setDraft] = useState("");
@@ -114,7 +114,7 @@ export function HomePage() {
             footer={(
               <div className="flex items-center justify-between gap-3 px-3 pb-3 pt-1">
                 <div className="min-w-0 truncate text-xs text-muted-foreground">
-                  {submittingDisabled ? "本地服务就绪后可以开始聊天" : "给 Hermes 发消息"}
+                  {submittingDisabled ? "本地服务就绪后可以开始聊天" : "给 Ash 发消息"}
                 </div>
                 <Button
                   type="submit"
@@ -141,7 +141,7 @@ export function HomePage() {
               onPressEnter={handlePressEnter}
               onTextChange={updateDraftFromEditor}
               pasteMarkdownAutoConvertThreshold={3}
-              placeholder={submittingDisabled ? "本地服务就绪后可以开始聊天" : "给 Hermes 发消息"}
+              placeholder={submittingDisabled ? "本地服务就绪后可以开始聊天" : "给 Ash 发消息"}
               plugins={newChatEditorPlugins}
               style={{
                 height: composerResize.height,
@@ -149,7 +149,7 @@ export function HomePage() {
               }}
               type="text"
               variant="chat"
-              className="hermes-composer-editor hermes-composer-editor-home h-full px-4 py-3 text-[15px] leading-6 text-foreground outline-none"
+              className="ash-composer-editor ash-composer-editor-home h-full px-4 py-3 text-[15px] leading-6 text-foreground outline-none"
               theme={{
                 fontSize: 15,
                 lineHeight: 1.55,

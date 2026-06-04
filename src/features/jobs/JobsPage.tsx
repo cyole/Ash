@@ -9,7 +9,7 @@ export function JobsPage() {
       <PageHeader
         eyebrow="自动化"
         title="计划"
-        description="无需手写定时表达式，也能创建、暂停、恢复和运行 Hermes 定时任务。"
+        description="无需手写定时表达式，也能创建、暂停、恢复和运行 Ash 定时任务。"
         actions={<Button>新建计划</Button>}
       />
       <EmptyState

@@ -69,7 +69,7 @@ pub(crate) fn pick_dashboard_port() -> Result<u16, String> {
     }
 
     Err(format!(
-        "没有可用的 Hermes dashboard 端口（{}-{}）。",
+        "没有可用的 本地 dashboard 端口（{}-{}）。",
         DASHBOARD_PORT_START, DASHBOARD_PORT_END
     ))
 }
@@ -93,9 +93,9 @@ pub(crate) fn fetch_dashboard_status(api_url: &str, token: &str) -> Result<Value
     if !status.is_success() {
         let body = response.text().unwrap_or_default();
         return Err(if body.trim().is_empty() {
-            format!("Hermes dashboard 返回 HTTP {status}。")
+            format!("本地 dashboard 返回 HTTP {status}。")
         } else {
-            format!("Hermes dashboard 返回 HTTP {status}: {}", body.trim())
+            format!("本地 dashboard 返回 HTTP {status}: {}", body.trim())
         });
     }
 
@@ -186,7 +186,7 @@ pub(crate) fn run_managed_hermes(
     paths: &RuntimePaths,
     args: &[&str],
 ) -> Result<RuntimeCommandResult, String> {
-    let hermes = find_managed_hermes(paths).ok_or("内置 Hermes 运行时尚未准备好。")?;
+    let hermes = find_managed_hermes(paths).ok_or("内置本地引擎尚未准备好。")?;
 
     run_hermes(&hermes, paths, args)
 }
@@ -201,7 +201,7 @@ pub(crate) fn run_hermes(
         .args(args)
         .current_dir(&paths.install_dir)
         .env("HERMES_HOME", &paths.hermes_home)
-        .env("HERMES_DESKTOP_RUNTIME", &paths.root)
+        .env("ASH_DESKTOP_RUNTIME", &paths.root)
         .env("PYTHONDONTWRITEBYTECODE", "1")
         .env("PYTHONNOUSERSITE", "1")
         .env("PATH", enhanced_path(paths));
@@ -241,14 +241,14 @@ pub(crate) fn launch_dashboard(paths: &RuntimePaths) -> Result<DashboardLaunch, 
         &log_path,
         "desktop",
         format!(
-            "Launching Hermes dashboard on {api_url} via {}",
+            "Launching 本地 dashboard on {api_url} via {}",
             backend_path.to_string_lossy()
         ),
     );
 
     let mut child = command.spawn().map_err(|error| {
         format!(
-            "Hermes dashboard 启动失败（{}）：{}",
+            "本地 dashboard 启动失败（{}）：{}",
             backend_path.to_string_lossy(),
             error
         )
@@ -266,7 +266,7 @@ pub(crate) fn launch_dashboard(paths: &RuntimePaths) -> Result<DashboardLaunch, 
     append_runtime_log(
         &log_path,
         "desktop",
-        format!("Hermes dashboard is healthy at {}", launch.api_url),
+        format!("本地 dashboard is healthy at {}", launch.api_url),
     );
     Ok(launch)
 }
@@ -305,7 +305,7 @@ fn dashboard_command(
             ],
         )
     } else {
-        return Err("内置 Hermes 运行时尚未准备好。".to_string());
+        return Err("内置本地引擎尚未准备好。".to_string());
     };
 
     let mut command = Command::new(&backend_path);
@@ -313,7 +313,7 @@ fn dashboard_command(
         .args(args)
         .current_dir(&paths.install_dir)
         .env("HERMES_HOME", &paths.hermes_home)
-        .env("HERMES_DESKTOP_RUNTIME", &paths.root)
+        .env("ASH_DESKTOP_RUNTIME", &paths.root)
         .env("HERMES_DASHBOARD_SESSION_TOKEN", token)
         .env("HERMES_DASHBOARD_TUI", "1")
         .env("HERMES_WEB_DIST", paths.web_dist_path())
@@ -341,10 +341,10 @@ fn wait_for_dashboard(launch: &mut DashboardLaunch, log_path: &Path) -> Result<(
             append_runtime_log(
                 log_path,
                 "desktop",
-                format!("Hermes dashboard exited before readiness: {status}"),
+                format!("本地 dashboard exited before readiness: {status}"),
             );
             return Err(format!(
-                "Hermes dashboard 过早退出：{}。",
+                "本地 dashboard 过早退出：{}。",
                 status
                     .code()
                     .map(|code| code.to_string())
@@ -359,12 +359,12 @@ fn wait_for_dashboard(launch: &mut DashboardLaunch, log_path: &Path) -> Result<(
                 log_path,
                 "desktop",
                 format!(
-                    "Hermes dashboard did not become healthy within {} seconds",
+                    "本地 dashboard did not become healthy within {} seconds",
                     DASHBOARD_START_TIMEOUT.as_secs()
                 ),
             );
             return Err(format!(
-                "Hermes dashboard 在 {} 秒内没有就绪。",
+                "本地 dashboard 在 {} 秒内没有就绪。",
                 DASHBOARD_START_TIMEOUT.as_secs()
             ));
         }
@@ -396,7 +396,7 @@ where
                     append_runtime_log(
                         &log_path,
                         "desktop",
-                        format!("读取 Hermes dashboard 输出失败：{error}"),
+                        format!("读取 本地 dashboard 输出失败：{error}"),
                     );
                     break;
                 }
@@ -581,7 +581,7 @@ impl ChildTimeoutExt for Child {
                 if !stderr.trim().is_empty() {
                     stderr.push('\n');
                 }
-                stderr.push_str(&format!("Hermes 命令在 {} 秒后超时。", timeout.as_secs()));
+                stderr.push_str(&format!("运行时命令在 {} 秒后超时。", timeout.as_secs()));
 
                 return Ok(std::process::Output {
                     status: output.status,

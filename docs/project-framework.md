@@ -1,4 +1,4 @@
-# Hermes Project Framework
+# Ash Project Framework
 
 ## Recommended Stack
 
@@ -41,7 +41,7 @@ Recommended Tauri plugins:
 Recommended initial layout:
 
 ```txt
-Hermes/
+Ash/
   README.md
   docs/
     product-plan.md
@@ -80,7 +80,7 @@ Hermes/
     styles/
       globals.css
     types/
-      hermes.ts
+      runtime.ts
       events.ts
       settings.ts
   src-tauri/
@@ -181,23 +181,23 @@ The app shell should include:
 - left sidebar
 - top profile/model status bar
 - global command/search shortcut
-- Hermes connection status
+- runtime connection status
 - task status indicator
 - notification center entry
 - settings shortcut
 
 Avoid a marketing-style home screen. The first screen should help users run or
-inspect Hermes immediately.
+inspect the local runtime immediately.
 
 ## Backend Adapter Layer
 
-The React UI should never call a concrete Hermes transport directly.
+The React UI should never call a concrete runtime transport directly.
 
 Use a backend adapter interface:
 
 ```ts
-export interface HermesBackend {
-  getStatus(): Promise<HermesStatus>;
+export interface RuntimeBackend {
+  getStatus(): Promise<RuntimeStatus>;
   sendMessage(input: ChatInput): AsyncIterable<ChatEvent>;
   stopRun(runId: string): Promise<void>;
   listSessions(): Promise<SessionSummary[]>;
@@ -211,14 +211,14 @@ export interface HermesBackend {
 
 Initial adapters:
 
-- `LocalHermesBackend`
-- `RemoteHermesBackend`
-- `CliBridgeHermesBackend`
+- `LocalRuntimeBackend`
+- `RemoteRuntimeBackend`
+- `CliBridgeRuntimeBackend`
 
 Future adapters:
 
 - `OpenClawBackend`
-- `MockHermesBackend` for development and tests
+- `MockRuntimeBackend` for development and tests
 
 ## Tauri Command Boundary
 
@@ -232,7 +232,7 @@ Frontend calls Tauri commands for native actions only:
 - diagnostics
 - updater
 
-Hermes protocol calls should stay in TypeScript when possible, unless they need
+Agent protocol calls should stay in TypeScript when possible, unless they need
 native OS access.
 
 Example command groups:
@@ -297,7 +297,7 @@ Use SQLite only when needed for:
 
 Prefer reading from Hermes state when Hermes already owns the data.
 
-## Hermes Runtime Strategy
+## Runtime Strategy
 
 Support three modes:
 
@@ -317,7 +317,7 @@ This is useful for VPS and home-server setups.
 
 The native layer should own process lifecycle:
 
-- find app-owned Hermes runtime
+- find app-owned Agent runtime
 - unpack bundled runtime archive
 - validate version
 - start service
@@ -534,7 +534,7 @@ Unit tests:
 
 Integration tests:
 
-- mock Hermes backend
+- mock runtime backend
 - onboarding flow
 - chat flow with streaming events
 - jobs CRUD
@@ -545,7 +545,7 @@ Desktop smoke tests:
 - app starts
 - onboarding appears
 - settings persist
-- runtime detection handles missing Hermes
+- runtime detection handles missing runtime
 - remote connection validation fails gracefully
 
 Use Playwright for frontend flows where practical. Add Rust tests for native
@@ -587,4 +587,4 @@ Release requirements:
 15. Add logs and diagnostic export
 
 The mock backend is important because it lets us build the desktop UI before the
-Hermes API boundary is fully stable.
+Hermes Agent API boundary is fully stable.

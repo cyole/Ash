@@ -43,16 +43,16 @@ pub(crate) fn start_runtime_on_startup(app: AppHandle) {
     RUNTIME_SHUTTING_DOWN.store(false, Ordering::SeqCst);
     tauri::async_runtime::spawn_blocking(move || match runtime_prepare_for_startup(app) {
         Ok(result) if result.success => {
-            eprintln!("Hermes dashboard 已自动启动。");
+            eprintln!("本地 dashboard 已自动启动。");
         }
         Ok(result) => {
             eprintln!(
-                "Hermes dashboard 自动启动需要处理：{}",
+                "本地 dashboard 自动启动需要处理：{}",
                 merge_output(&result)
             );
         }
         Err(error) => {
-            eprintln!("Hermes dashboard 自动启动失败：{error}");
+            eprintln!("本地 dashboard 自动启动失败：{error}");
         }
     });
 }
@@ -61,16 +61,16 @@ pub(crate) fn stop_runtime_for_shutdown(_app: AppHandle) {
     RUNTIME_SHUTTING_DOWN.store(true, Ordering::SeqCst);
     match stop_dashboard_process() {
         Ok(result) if result.success => {
-            eprintln!("Hermes dashboard 已在退出前停止。");
+            eprintln!("本地 dashboard 已在退出前停止。");
         }
         Ok(result) => {
             eprintln!(
-                "Hermes dashboard 退出前停止需要处理：{}",
+                "本地 dashboard 退出前停止需要处理：{}",
                 merge_output(&result)
             );
         }
         Err(error) => {
-            eprintln!("Hermes dashboard 退出前停止失败：{error}");
+            eprintln!("本地 dashboard 退出前停止失败：{error}");
         }
     }
 }
@@ -81,7 +81,7 @@ pub(crate) fn runtime_dashboard_status_impl(
     let snapshot = dashboard_snapshot()?;
     let Some(snapshot) = snapshot else {
         return Ok(RuntimeCommandResult::message(
-            "Hermes dashboard 尚未由本应用启动。",
+            "本地 dashboard 尚未由本应用启动。",
         ));
     };
 
@@ -198,11 +198,11 @@ fn runtime_prepare_with_options(
     let paths = runtime_paths(&app);
     ensure_runtime_dirs(&paths)?;
     let log_path = paths.desktop_log_path();
-    append_runtime_log(&log_path, "desktop", "Preparing app-managed Hermes runtime");
+    append_runtime_log(&log_path, "desktop", "Preparing Ash-managed Hermes runtime");
 
     let migration = migrate_legacy_config_if_needed(&paths)?;
     let mut result =
-        RuntimeCommandResult::message(format!("内置 Hermes 主目录已就绪。\n{}", migration.trim()));
+        RuntimeCommandResult::message(format!("内置 Agent 主目录已就绪。\n{}", migration.trim()));
 
     let runtime_result = ensure_bundled_runtime(&app, &paths)?;
     result = combine_results(result, runtime_result);
@@ -216,7 +216,7 @@ fn runtime_prepare_with_options(
     if skip_start_if_shutting_down && RUNTIME_SHUTTING_DOWN.load(Ordering::SeqCst) {
         return Ok(combine_results(
             result,
-            RuntimeCommandResult::message("应用正在退出，已跳过 Hermes dashboard 启动。"),
+            RuntimeCommandResult::message("应用正在退出，已跳过 本地 dashboard 启动。"),
         ));
     }
 
@@ -252,7 +252,7 @@ pub(crate) fn runtime_reveal_logs_impl(app: AppHandle) -> Result<RuntimeCommandR
     let log_path = paths.desktop_log_path();
     append_runtime_log(&log_path, "desktop", "Log directory opened from settings");
 
-    let log_dir = log_path.parent().ok_or("无法确定 Hermes 日志目录。")?;
+    let log_dir = log_path.parent().ok_or("无法确定 运行时日志目录。")?;
     let mut command = log_directory_open_command(log_dir);
     let status = command.status().map_err(|error| error.to_string())?;
 
@@ -285,7 +285,7 @@ pub(crate) fn runtime_connection_impl(app: AppHandle) -> Result<RuntimeConnectio
 
     ensure_runtime_config(&paths)?;
     start_dashboard_process(&paths)?;
-    let snapshot = dashboard_snapshot()?.ok_or("Hermes dashboard 尚未启动。")?;
+    let snapshot = dashboard_snapshot()?.ok_or("本地 dashboard 尚未启动。")?;
 
     Ok(RuntimeConnection {
         api_url: snapshot.api_url,
@@ -303,7 +303,7 @@ pub(crate) fn runtime_dashboard_api_impl(
     ensure_runtime_config(&paths)?;
     start_dashboard_process(&paths)?;
 
-    let snapshot = dashboard_snapshot()?.ok_or("Hermes dashboard 尚未启动。")?;
+    let snapshot = dashboard_snapshot()?.ok_or("本地 dashboard 尚未启动。")?;
     let path = validate_dashboard_api_path(&input.path)?;
     let method = parse_dashboard_api_method(input.method.as_deref().unwrap_or("GET"))?;
     let url = format!("{}{}", snapshot.api_url, path);
@@ -328,9 +328,9 @@ pub(crate) fn runtime_dashboard_api_impl(
 
     if !status.is_success() {
         return Err(if text.trim().is_empty() {
-            format!("Hermes dashboard 返回 HTTP {status}。")
+            format!("本地 dashboard 返回 HTTP {status}。")
         } else {
-            format!("Hermes dashboard 返回 HTTP {status}: {}", text.trim())
+            format!("本地 dashboard 返回 HTTP {status}: {}", text.trim())
         });
     }
 
@@ -339,7 +339,7 @@ pub(crate) fn runtime_dashboard_api_impl(
     }
 
     serde_json::from_str(&text)
-        .map_err(|error| format!("Hermes dashboard 返回了非 JSON 响应（HTTP {status}）：{error}"))
+        .map_err(|error| format!("本地 dashboard 返回了非 JSON 响应（HTTP {status}）：{error}"))
 }
 
 fn start_dashboard_process(paths: &RuntimePaths) -> Result<RuntimeCommandResult, String> {
@@ -356,10 +356,10 @@ fn start_dashboard_process(paths: &RuntimePaths) -> Result<RuntimeCommandResult,
             append_runtime_log(
                 &log_path,
                 "desktop",
-                format!("Reusing healthy Hermes dashboard at {}", state.api_url),
+                format!("Reusing healthy 本地 dashboard at {}", state.api_url),
             );
             return Ok(RuntimeCommandResult::message(format!(
-                "Hermes dashboard 已在 {} 运行。",
+                "本地 dashboard 已在 {} 运行。",
                 state.api_url
             )));
         }
@@ -367,7 +367,7 @@ fn start_dashboard_process(paths: &RuntimePaths) -> Result<RuntimeCommandResult,
         append_runtime_log(
             &log_path,
             "desktop",
-            "Stopping stale Hermes dashboard process",
+            "Stopping stale 本地 dashboard process",
         );
         let _ = state.child.kill();
         let _ = state.child.wait();
@@ -386,18 +386,18 @@ fn start_dashboard_process(paths: &RuntimePaths) -> Result<RuntimeCommandResult,
     });
 
     Ok(RuntimeCommandResult::message(format!(
-        "Hermes dashboard 已启动。\nPID: {pid}\nURL: {api_url}\n后端: {}",
+        "本地 dashboard 已启动。\nPID: {pid}\nURL: {api_url}\n后端: {}",
         backend_path.to_string_lossy()
     )))
 }
 
 fn validate_dashboard_api_path(path: &str) -> Result<&str, String> {
     if !path.starts_with("/api/") {
-        return Err("Hermes dashboard API 路径必须以 /api/ 开头。".to_string());
+        return Err("本地 dashboard API 路径必须以 /api/ 开头。".to_string());
     }
 
     if path.starts_with("//") || path.contains('\r') || path.contains('\n') {
-        return Err("Hermes dashboard API 路径无效。".to_string());
+        return Err("本地 dashboard API 路径无效。".to_string());
     }
 
     Ok(path)
@@ -410,7 +410,7 @@ fn parse_dashboard_api_method(method: &str) -> Result<Method, String> {
         "PATCH" => Ok(Method::PATCH),
         "POST" => Ok(Method::POST),
         "PUT" => Ok(Method::PUT),
-        other => Err(format!("不支持的 Hermes dashboard API 方法：{other}。")),
+        other => Err(format!("不支持的 本地 dashboard API 方法：{other}。")),
     }
 }
 
@@ -425,7 +425,7 @@ fn stop_dashboard_process() -> Result<RuntimeCommandResult, String> {
     let mut guard = DASHBOARD_STATE.lock().map_err(|error| error.to_string())?;
     let Some(mut state) = guard.take() else {
         return Ok(RuntimeCommandResult::message(
-            "Hermes dashboard 未由本应用启动。",
+            "本地 dashboard 未由本应用启动。",
         ));
     };
 
@@ -436,9 +436,9 @@ fn stop_dashboard_process() -> Result<RuntimeCommandResult, String> {
         success: true,
         code: stop_result.status.code(),
         stdout: if stop_result.forced {
-            format!("Hermes dashboard 未在宽限时间内退出，已强制停止（PID {pid}）。")
+            format!("本地 dashboard 未在宽限时间内退出，已强制停止（PID {pid}）。")
         } else {
-            format!("已停止 Hermes dashboard（PID {pid}）。")
+            format!("已停止 本地 dashboard（PID {pid}）。")
         },
         stderr: String::new(),
     })

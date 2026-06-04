@@ -40,14 +40,14 @@ pub(crate) fn runtime_paths(app: &AppHandle) -> RuntimePaths {
 
 fn fallback_app_data_dir() -> PathBuf {
     if let Some(home) = env::var_os("HOME") {
-        return PathBuf::from(home).join(".hermes-desktop");
+        return PathBuf::from(home).join(".ash-desktop");
     }
 
     if let Some(profile) = env::var_os("USERPROFILE") {
-        return PathBuf::from(profile).join(".hermes-desktop");
+        return PathBuf::from(profile).join(".ash-desktop");
     }
 
-    env::temp_dir().join("hermes-desktop")
+    env::temp_dir().join("ash-desktop")
 }
 
 pub(crate) fn legacy_config_path(paths: &RuntimePaths) -> Option<PathBuf> {

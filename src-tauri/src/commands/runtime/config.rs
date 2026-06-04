@@ -25,11 +25,11 @@ pub(crate) fn migrate_legacy_config_if_needed(paths: &RuntimePaths) -> Result<St
         match read_yaml_file(path) {
             Ok(legacy_config) => {
                 merge_user_config(&mut config, &legacy_config);
-                message = format!("已从 {} 导入已有 Hermes 偏好。", path.to_string_lossy());
+                message = format!("已从 {} 导入已有 Agent 偏好。", path.to_string_lossy());
             }
             Err(error) => {
                 message = format!(
-                    "在 {} 找到已有 Hermes 配置，但导入失败：{}。",
+                    "在 {} 找到已有 Agent 配置，但导入失败：{}。",
                     path.to_string_lossy(),
                     error
                 );
@@ -122,7 +122,7 @@ pub(crate) fn write_yaml_file(path: &Path, config: &Value) -> Result<(), String>
     }
 
     let body = serde_yaml::to_string(config).map_err(|error| error.to_string())?;
-    let content = format!("# 由 Hermes 桌面版管理。运行时设置由应用控制。\n{}", body);
+    let content = format!("# 由 Ash 管理。运行时设置由应用控制。\n{}", body);
     fs::write(path, content).map_err(|error| error.to_string())
 }
 

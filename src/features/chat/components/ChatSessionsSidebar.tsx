@@ -7,7 +7,7 @@ import type { ChatSessionActivity } from "@/features/chat/chat-session-activity"
 import { markChatSessionViewed, useChatSessionActivities } from "@/features/chat/chat-session-activity";
 import { errorMessage } from "@/lib/errors";
 import type { HermesSession } from "@/lib/hermes";
-import { hermesQueryKeys, useHermesApi } from "@/lib/hermes/queries";
+import { ashQueryKeys, useAshApi } from "@/lib/hermes/queries";
 import { formatSessionTime, sessionTitle, sessionUpdatedAt } from "@/lib/hermes/session-format";
 import { cn } from "@/lib/utils";
 
@@ -15,11 +15,11 @@ export function ChatSessionsSidebar() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const selectedSessionId = searchParams.get(chatSessionSearchParam);
-  const { apiReady, apiUrl, client, sessionToken } = useHermesApi();
+  const { apiReady, apiUrl, client, sessionToken } = useAshApi();
   const sessionActivities = useChatSessionActivities();
   const sessions = useQuery({
     enabled: apiReady,
-    queryKey: hermesQueryKeys.sessions(apiUrl, Boolean(sessionToken)),
+    queryKey: ashQueryKeys.sessions(apiUrl, Boolean(sessionToken)),
     queryFn: () => client.listSessions(),
   });
 
@@ -81,9 +81,9 @@ function ChatSessionItem({
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "group flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-muted-foreground transition-colors hover:bg-black/[0.04] hover:text-foreground",
-        generating && "bg-black/[0.045] text-foreground",
-        active && "bg-black/[0.055] font-medium text-foreground",
+        "group flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-muted-foreground transition-colors hover:bg-[var(--ash-sidebar-control-hover)] hover:text-foreground",
+        generating && "bg-[var(--ash-sidebar-control-hover)] text-foreground",
+        active && "bg-[var(--ash-sidebar-control-active)] font-medium text-foreground",
       )}
     >
       <span className="min-w-0 flex-1 truncate text-[13px] leading-5">{sessionTitle(session)}</span>
@@ -121,7 +121,7 @@ function ChatSessionSkeleton() {
     <div className="space-y-1">
       {Array.from({ length: 7 }).map((_, index) => (
         <div key={index} className="flex h-8 items-center rounded-lg px-2">
-          <div className="h-3 w-4/5 rounded bg-black/10" />
+          <div className="h-3 w-4/5 rounded bg-[var(--ash-sidebar-skeleton)]" />
         </div>
       ))}
     </div>
@@ -130,7 +130,7 @@ function ChatSessionSkeleton() {
 
 function SidebarNotice({ description, title }: { description: string; title: string }) {
   return (
-    <div className="rounded-lg border border-black/10 bg-black/[0.025] px-3 py-3">
+    <div className="rounded-lg border border-[var(--ash-sidebar-notice-border)] bg-[var(--ash-sidebar-notice-bg)] px-3 py-3">
       <div className="text-[12px] font-medium text-foreground">{title}</div>
       <p className="mt-1 text-[11px] leading-5 text-muted-foreground">{description}</p>
     </div>

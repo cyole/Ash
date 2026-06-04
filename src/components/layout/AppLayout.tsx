@@ -7,16 +7,16 @@ import { StatusBar } from "@/components/layout/StatusBar";
 const sidebarDefaultWidth = 236;
 const sidebarMinWidth = 224;
 const sidebarMaxWidth = 360;
-const sidebarWidthStorageKey = "hermes.sidebar.width.v1";
+const sidebarWidthStorageKey = "ash.sidebar.width.v1";
 
 interface LayoutStyle extends CSSProperties {
-  "--hermes-sidebar-width": string;
+  "--ash-sidebar-width": string;
 }
 
 export function AppLayout() {
   const [sidebarWidth, setSidebarWidth] = useState(readStoredSidebarWidth);
   const layoutStyle: LayoutStyle = {
-    "--hermes-sidebar-width": `${sidebarWidth}px`,
+    "--ash-sidebar-width": `${sidebarWidth}px`,
   };
 
   useEffect(() => {
@@ -64,7 +64,7 @@ export function AppLayout() {
         onResizePointerDown={handleSidebarResizeStart}
         width={sidebarWidth}
       />
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-tl-[14px] border-l border-t border-black/10 bg-card">
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-tl-[14px] border-l border-t border-[var(--ash-panel-border)] bg-card">
         <StatusBar />
         <Outlet />
       </main>

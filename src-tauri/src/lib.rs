@@ -76,10 +76,11 @@ pub fn run() {
             commands::settings::app_settings_save,
             commands::weixin::weixin_qrcode_get,
             commands::weixin::weixin_qrcode_poll,
+            commands::window::window_theme_set,
             commands::window::window_translucency_set
         ])
         .build(tauri::generate_context!())
-        .expect("Hermes 桌面应用运行失败");
+        .expect("Ash 桌面应用运行失败");
 
     app.run(|app_handle, event| {
         if let tauri::RunEvent::ExitRequested { api, .. } = event {

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { isTauriRuntime, loadAppSettings, saveAppSettings, setWindowTranslucency } from "@/lib/tauri";
+import { isTauriRuntime, loadAppSettings, saveAppSettings, setWindowTheme, setWindowTranslucency } from "@/lib/tauri";
 
 export const themeModes = ["light", "dark", "system"] as const;
 export const animationModes = ["disabled", "agile", "elegant"] as const;
@@ -14,14 +14,14 @@ export type ContextMenuMode = (typeof contextMenuModes)[number];
 export type ChatTransitionMode = (typeof chatTransitionModes)[number];
 export type AccentColor = (typeof accentColors)[number];
 
-export interface HermesSettingsStorage {
+export interface AshSettingsStorage {
   error: string | null;
   kind: "browser-preview" | "desktop";
   loading: boolean;
   path: string;
 }
 
-export interface HermesSettings {
+export interface AshSettings {
   accentColor: AccentColor;
   animationMode: AnimationMode;
   autoScrollOnStreaming: boolean;
@@ -34,19 +34,19 @@ export interface HermesSettings {
   translucentSidebar: boolean;
 }
 
-interface HermesSettingsContextValue {
+interface AshSettingsContextValue {
   resetSettings: () => void;
-  settings: HermesSettings;
-  storage: HermesSettingsStorage;
-  updateSettings: (patch: Partial<HermesSettings>) => void;
+  settings: AshSettings;
+  storage: AshSettingsStorage;
+  updateSettings: (patch: Partial<AshSettings>) => void;
 }
 
-const settingsStorageKey = "hermes.settings.v1";
+const settingsStorageKey = "ash.settings.v1";
 const browserPreviewStoragePath = `browser-preview:localStorage/${settingsStorageKey}`;
 const minChatFontSize = 12;
 const maxChatFontSize = 18;
 
-export const defaultHermesSettings: HermesSettings = {
+export const defaultAshSettings: AshSettings = {
   accentColor: "neutral",
   animationMode: "agile",
   autoScrollOnStreaming: true,
@@ -59,26 +59,26 @@ export const defaultHermesSettings: HermesSettings = {
   translucentSidebar: true,
 };
 
-const HermesSettingsContext = createContext<HermesSettingsContextValue | null>(null);
+const AshSettingsContext = createContext<AshSettingsContextValue | null>(null);
 
-export function HermesSettingsProvider({ children }: { children: ReactNode }) {
-  const [settings, setSettings] = useState<HermesSettings>(() =>
-    isTauriRuntime() ? defaultHermesSettings : readBrowserStoredSettings(),
+export function AshSettingsProvider({ children }: { children: ReactNode }) {
+  const [settings, setSettings] = useState<AshSettings>(() =>
+    isTauriRuntime() ? defaultAshSettings : readBrowserStoredSettings(),
   );
   const [hydrated, setHydrated] = useState(false);
-  const [storage, setStorage] = useState<HermesSettingsStorage>(() => ({
+  const [storage, setStorage] = useState<AshSettingsStorage>(() => ({
     error: null,
     kind: isTauriRuntime() ? "desktop" : "browser-preview",
     loading: true,
     path: isTauriRuntime() ? "正在读取桌面设置文件" : browserPreviewStoragePath,
   }));
 
-  const updateSettings = useCallback((patch: Partial<HermesSettings>) => {
+  const updateSettings = useCallback((patch: Partial<AshSettings>) => {
     setSettings((current) => normalizeSettings({ ...current, ...patch }));
   }, []);
 
   const resetSettings = useCallback(() => {
-    setSettings(defaultHermesSettings);
+    setSettings(defaultAshSettings);
   }, []);
 
   useEffect(() => {
@@ -180,10 +180,10 @@ export function HermesSettingsProvider({ children }: { children: ReactNode }) {
         (settings.themeMode === "system" && darkQuery.matches);
 
       root.classList.toggle("dark", shouldUseDark);
-      root.dataset.hermesTheme = settings.themeMode;
-      root.dataset.hermesAccent = settings.accentColor;
-      root.dataset.hermesAnimation = settings.animationMode;
-      root.dataset.hermesTranslucentSidebar = settings.translucentSidebar ? "true" : "false";
+      root.dataset.ashTheme = settings.themeMode;
+      root.dataset.ashAccent = settings.accentColor;
+      root.dataset.ashAnimation = settings.animationMode;
+      root.dataset.ashTranslucentSidebar = settings.translucentSidebar ? "true" : "false";
     }
 
     applyTheme();
@@ -199,6 +199,12 @@ export function HermesSettingsProvider({ children }: { children: ReactNode }) {
       console.error("Failed to apply native window translucency.", error);
     });
   }, [settings.translucentSidebar]);
+
+  useEffect(() => {
+    void setWindowTheme(settings.themeMode).catch((error) => {
+      console.error("Failed to apply native window theme.", error);
+    });
+  }, [settings.themeMode]);
 
   useEffect(() => {
     function handleContextMenu(event: MouseEvent) {
@@ -221,14 +227,14 @@ export function HermesSettingsProvider({ children }: { children: ReactNode }) {
     [resetSettings, settings, storage, updateSettings],
   );
 
-  return <HermesSettingsContext.Provider value={value}>{children}</HermesSettingsContext.Provider>;
+  return <AshSettingsContext.Provider value={value}>{children}</AshSettingsContext.Provider>;
 }
 
-export function useHermesSettings() {
-  const value = useContext(HermesSettingsContext);
+export function useAshSettings() {
+  const value = useContext(AshSettingsContext);
 
   if (!value) {
-    throw new Error("useHermesSettings must be used inside HermesSettingsProvider.");
+    throw new Error("useAshSettings must be used inside AshSettingsProvider.");
   }
 
   return value;
@@ -238,16 +244,16 @@ function readBrowserStoredSettings() {
   try {
     const raw = window.localStorage.getItem(settingsStorageKey);
     if (!raw) {
-      return defaultHermesSettings;
+      return defaultAshSettings;
     }
 
-    return normalizeSettings(JSON.parse(raw) as Partial<HermesSettings>);
+    return normalizeSettings(JSON.parse(raw) as Partial<AshSettings>);
   } catch {
-    return defaultHermesSettings;
+    return defaultAshSettings;
   }
 }
 
-function writeBrowserStoredSettings(settings: HermesSettings) {
+function writeBrowserStoredSettings(settings: AshSettings) {
   try {
     window.localStorage.setItem(settingsStorageKey, JSON.stringify(serializeSettings(settings)));
   } catch {
@@ -255,7 +261,7 @@ function writeBrowserStoredSettings(settings: HermesSettings) {
   }
 }
 
-function serializeSettings(settings: HermesSettings): Record<string, unknown> {
+function serializeSettings(settings: AshSettings): Record<string, unknown> {
   return {
     accentColor: settings.accentColor,
     animationMode: settings.animationMode,
@@ -270,43 +276,43 @@ function serializeSettings(settings: HermesSettings): Record<string, unknown> {
   };
 }
 
-function normalizeSettings(input: Partial<HermesSettings>): HermesSettings {
+function normalizeSettings(input: Partial<AshSettings>): AshSettings {
   return {
     accentColor: isOneOf(input.accentColor, accentColors)
       ? input.accentColor
-      : defaultHermesSettings.accentColor,
+      : defaultAshSettings.accentColor,
     animationMode: isOneOf(input.animationMode, animationModes)
       ? input.animationMode
-      : defaultHermesSettings.animationMode,
+      : defaultAshSettings.animationMode,
     autoScrollOnStreaming:
       typeof input.autoScrollOnStreaming === "boolean"
         ? input.autoScrollOnStreaming
-        : defaultHermesSettings.autoScrollOnStreaming,
+        : defaultAshSettings.autoScrollOnStreaming,
     chatFontSize:
       typeof input.chatFontSize === "number"
         ? clamp(Math.round(input.chatFontSize), minChatFontSize, maxChatFontSize)
-        : defaultHermesSettings.chatFontSize,
+        : defaultAshSettings.chatFontSize,
     chatTransitionMode: isOneOf(input.chatTransitionMode, chatTransitionModes)
       ? input.chatTransitionMode
-      : defaultHermesSettings.chatTransitionMode,
+      : defaultAshSettings.chatTransitionMode,
     contextMenuMode: isOneOf(input.contextMenuMode, contextMenuModes)
       ? input.contextMenuMode
-      : defaultHermesSettings.contextMenuMode,
+      : defaultAshSettings.contextMenuMode,
     highlighterTheme:
       typeof input.highlighterTheme === "string" && input.highlighterTheme.trim()
         ? input.highlighterTheme
-        : defaultHermesSettings.highlighterTheme,
+        : defaultAshSettings.highlighterTheme,
     mermaidTheme:
       typeof input.mermaidTheme === "string" && input.mermaidTheme.trim()
         ? input.mermaidTheme
-        : defaultHermesSettings.mermaidTheme,
+        : defaultAshSettings.mermaidTheme,
     themeMode: isOneOf(input.themeMode, themeModes)
       ? input.themeMode
-      : defaultHermesSettings.themeMode,
+      : defaultAshSettings.themeMode,
     translucentSidebar:
       typeof input.translucentSidebar === "boolean"
         ? input.translucentSidebar
-        : defaultHermesSettings.translucentSidebar,
+        : defaultAshSettings.translucentSidebar,
   };
 }
 

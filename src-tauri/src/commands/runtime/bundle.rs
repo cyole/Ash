@@ -140,7 +140,7 @@ fn unpack_bundled_runtime(
     }
 
     let hermes = find_hermes_in_install_dir(&paths.install_dir)
-        .ok_or("内置本地引擎归档中没有 Hermes 启动器。")?;
+        .ok_or("内置本地引擎归档中没有 Agent 启动器。")?;
     ensure_executable(&hermes)?;
     write_runtime_manifest(paths, archive_path)?;
 
