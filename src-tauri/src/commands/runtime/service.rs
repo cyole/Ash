@@ -1,10 +1,12 @@
 use std::{
     path::PathBuf,
-    process::{Child, Command},
+    process::{Child, Command, ExitStatus},
     sync::{
         atomic::{AtomicBool, Ordering},
         LazyLock, Mutex,
     },
+    thread,
+    time::{Duration, Instant},
 };
 
 use reqwest::blocking::Client;
@@ -27,6 +29,8 @@ use super::types::{
 static RUNTIME_SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
 static DASHBOARD_STATE: LazyLock<Mutex<Option<DashboardState>>> =
     LazyLock::new(|| Mutex::new(None));
+const DASHBOARD_STOP_GRACE_PERIOD: Duration = Duration::from_secs(5);
+const DASHBOARD_STOP_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 struct DashboardState {
     api_url: String,
@@ -426,15 +430,84 @@ fn stop_dashboard_process() -> Result<RuntimeCommandResult, String> {
     };
 
     let pid = state.child.id();
-    let _ = state.child.kill();
-    let status = state.child.wait().map_err(|error| error.to_string())?;
+    let stop_result = terminate_dashboard_child(&mut state.child)?;
 
     Ok(RuntimeCommandResult {
         success: true,
-        code: status.code(),
-        stdout: format!("已停止 Hermes dashboard（PID {pid}）。"),
+        code: stop_result.status.code(),
+        stdout: if stop_result.forced {
+            format!("Hermes dashboard 未在宽限时间内退出，已强制停止（PID {pid}）。")
+        } else {
+            format!("已停止 Hermes dashboard（PID {pid}）。")
+        },
         stderr: String::new(),
     })
+}
+
+struct DashboardStopResult {
+    forced: bool,
+    status: ExitStatus,
+}
+
+fn terminate_dashboard_child(child: &mut Child) -> Result<DashboardStopResult, String> {
+    if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
+        return Ok(DashboardStopResult {
+            forced: false,
+            status,
+        });
+    }
+
+    let graceful_signal_sent = request_dashboard_termination(child).is_ok();
+    if graceful_signal_sent {
+        let deadline = Instant::now() + DASHBOARD_STOP_GRACE_PERIOD;
+        while Instant::now() < deadline {
+            if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
+                return Ok(DashboardStopResult {
+                    forced: false,
+                    status,
+                });
+            }
+
+            thread::sleep(DASHBOARD_STOP_POLL_INTERVAL);
+        }
+    }
+
+    let _ = child.kill();
+    let status = child.wait().map_err(|error| error.to_string())?;
+    Ok(DashboardStopResult {
+        forced: !graceful_signal_sent || status.code().is_none(),
+        status,
+    })
+}
+
+#[cfg(unix)]
+fn request_dashboard_termination(child: &mut Child) -> Result<(), String> {
+    match Command::new("kill")
+        .arg("-TERM")
+        .arg(child.id().to_string())
+        .status()
+    {
+        Ok(status) if status.success() => Ok(()),
+        Ok(status) => {
+            if child.try_wait().map_err(|error| error.to_string())?.is_some() {
+                Ok(())
+            } else {
+                Err(format!("发送 SIGTERM 失败，kill 退出码：{:?}", status.code()))
+            }
+        }
+        Err(error) => {
+            if child.try_wait().map_err(|error| error.to_string())?.is_some() {
+                Ok(())
+            } else {
+                Err(error.to_string())
+            }
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn request_dashboard_termination(child: &mut Child) -> Result<(), String> {
+    child.kill().map_err(|error| error.to_string())
 }
 
 #[cfg(target_os = "macos")]

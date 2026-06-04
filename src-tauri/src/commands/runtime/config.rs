@@ -105,26 +105,6 @@ pub(crate) fn ensure_runtime_config(paths: &RuntimePaths) -> Result<(), String> 
     write_yaml_file(&config_path, &config)
 }
 
-#[cfg(unix)]
-pub(crate) fn restrict_secret_file_permissions(path: &Path) -> Result<(), String> {
-    use std::os::unix::fs::PermissionsExt;
-
-    if !path.exists() {
-        return Ok(());
-    }
-
-    let mut permissions = fs::metadata(path)
-        .map_err(|error| error.to_string())?
-        .permissions();
-    permissions.set_mode(0o600);
-    fs::set_permissions(path, permissions).map_err(|error| error.to_string())
-}
-
-#[cfg(not(unix))]
-pub(crate) fn restrict_secret_file_permissions(_path: &Path) -> Result<(), String> {
-    Ok(())
-}
-
 fn add_desktop_notice(config: &mut Value, notice: String) {
     let root = ensure_mapping_value(config);
     let desktop = ensure_mapping_child(root, "desktop");

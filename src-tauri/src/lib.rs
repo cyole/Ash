@@ -6,6 +6,13 @@ use tauri_plugin_log::log::LevelFilter;
 
 static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
 
+fn stop_runtime_and_exit(app: tauri::AppHandle) {
+    tauri::async_runtime::spawn_blocking(move || {
+        commands::runtime::stop_runtime_for_shutdown(app.clone());
+        app.exit(0);
+    });
+}
+
 fn focus_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
@@ -25,7 +32,7 @@ fn log_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             focus_main_window(app);
         }))
@@ -48,10 +55,7 @@ pub fn run() {
 
                 api.prevent_close();
                 let app = window.app_handle().clone();
-                tauri::async_runtime::spawn_blocking(move || {
-                    commands::runtime::stop_runtime_for_shutdown(app.clone());
-                    app.exit(0);
-                });
+                stop_runtime_and_exit(app);
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -66,13 +70,20 @@ pub fn run() {
             commands::runtime::runtime_dashboard_api,
             commands::runtime::runtime_doctor,
             commands::runtime::runtime_setup_portal,
-            commands::runtime::runtime_extensions_catalog,
-            commands::runtime::model_config_status,
-            commands::runtime::model_config_save_openai,
-            commands::runtime::model_config_fetch_openai_models,
             commands::settings::app_settings_load,
             commands::settings::app_settings_save
         ])
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
         .expect("Hermes 桌面应用运行失败");
+
+    app.run(|app_handle, event| {
+        if let tauri::RunEvent::ExitRequested { api, .. } = event {
+            if SHUTDOWN_REQUESTED.swap(true, Ordering::SeqCst) {
+                return;
+            }
+
+            api.prevent_exit();
+            stop_runtime_and_exit(app_handle.clone());
+        }
+    });
 }

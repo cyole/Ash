@@ -488,37 +488,37 @@ export interface ProfilesResponse {
 }
 
 export interface SkillInfo {
-  category: string;
-  description: string;
+  category: null | string;
+  description: null | string;
   enabled: boolean;
   name: string;
 }
 
 export interface ToolsetInfo {
   configured: boolean;
-  description: string;
+  description: null | string;
   enabled: boolean;
-  label: string;
+  label: null | string;
   name: string;
-  tools: string[];
+  tools: null | string[];
 }
 
 export interface ToolEnvVar {
   default: string | null;
   is_set: boolean;
   key: string;
-  prompt: string;
+  prompt: null | string;
   url: string | null;
 }
 
 export interface ToolProvider {
-  badge: string;
-  env_vars: ToolEnvVar[];
+  badge: null | string;
+  env_vars: null | ToolEnvVar[];
   is_active: boolean;
   name: string;
   post_setup: string | null;
   requires_nous_auth: boolean;
-  tag: string;
+  tag: null | string;
 }
 
 export interface ToolsetConfig {

@@ -4,7 +4,7 @@ import { DEFAULT_HERMES_API_URL, HermesApiClient } from "@/lib/hermes/api";
 import { dashboardApi, getRuntimeConnection, getRuntimeStatus, isTauriRuntime } from "@/lib/tauri";
 
 export const hermesQueryKeys = {
-  extensionsCatalog: ["hermes-extensions-catalog"] as const,
+  extensions: (apiUrl: string, hasSessionToken: boolean) => ["hermes-extensions", apiUrl, hasSessionToken] as const,
   runtimeStatus: ["runtime-status"] as const,
   runtimeConnection: ["runtime-connection"] as const,
   sessions: (apiUrl: string, hasSessionToken: boolean) => ["hermes-sessions", apiUrl, hasSessionToken] as const,
@@ -12,6 +12,8 @@ export const hermesQueryKeys = {
   modelSettings: (apiUrl: string, hasSessionToken: boolean) => ["hermes-model-settings", apiUrl, hasSessionToken] as const,
   sessionMessages: (apiUrl: string, hasSessionToken: boolean, sessionId: string | null) =>
     ["hermes-session-messages", apiUrl, hasSessionToken, sessionId] as const,
+  toolsetConfig: (apiUrl: string, hasSessionToken: boolean, toolsetName: string) =>
+    ["hermes-toolset-config", apiUrl, hasSessionToken, toolsetName] as const,
 };
 
 export function useHermesApi() {

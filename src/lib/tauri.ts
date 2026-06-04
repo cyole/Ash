@@ -2,7 +2,6 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type { HermesStreamEvent, SessionChatInput } from "@/lib/hermes/types";
 import type {
-  HermesExtensionsCatalog,
   HermesStatus,
   RuntimeCommandResult,
   RuntimeConnection,
@@ -160,20 +159,6 @@ export async function dashboardApi<T>(input: RuntimeDashboardApiInput): Promise<
   }
 
   return invoke<T>("runtime_dashboard_api", { input });
-}
-
-export async function getExtensionsCatalog(): Promise<HermesExtensionsCatalog> {
-  if (!isTauriRuntime()) {
-    return {
-      skills: [],
-      plugins: [],
-      skillsRoot: "打开 Tauri 应用后可查看技能目录。",
-      optionalSkillsRoot: "打开 Tauri 应用后可查看可选技能目录。",
-      pluginsRoot: "打开 Tauri 应用后可查看插件目录。",
-    };
-  }
-
-  return invoke<HermesExtensionsCatalog>("runtime_extensions_catalog");
 }
 
 export async function createHermesTuiSession(title?: string): Promise<HermesTuiSession> {

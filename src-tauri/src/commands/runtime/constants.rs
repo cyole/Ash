@@ -8,7 +8,6 @@ pub(crate) const RUNTIME_MANIFEST_FILE: &str = "runtime-manifest.json";
 pub(crate) const HERMES_COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 pub(crate) const HEALTH_CHECK_TIMEOUT: Duration = Duration::from_millis(750);
 pub(crate) const DASHBOARD_START_TIMEOUT: Duration = Duration::from_secs(45);
-pub(crate) const PROVIDER_MODEL_FETCH_TIMEOUT: Duration = Duration::from_secs(10);
 pub(crate) const SESSION_TOKEN_HEADER: &str = "X-Hermes-Session-Token";
 
 pub(crate) const MIGRATABLE_CONFIG_KEYS: &[&str] = &[

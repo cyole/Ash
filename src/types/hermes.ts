@@ -51,35 +51,3 @@ export interface RuntimeDashboardApiInput {
   path: string;
   timeoutMs?: number;
 }
-
-export interface HermesExtensionsCatalog {
-  skills: HermesSkillCatalogItem[];
-  plugins: HermesPluginCatalogItem[];
-  skillsRoot: string;
-  optionalSkillsRoot: string;
-  pluginsRoot: string;
-}
-
-export interface HermesSkillCatalogItem {
-  name: string;
-  description: string;
-  category: string;
-  source: "installed" | "bundled" | "optional" | string;
-  status: "enabled" | "available" | "disabled" | string;
-  version: string | null;
-  author: string | null;
-  path: string;
-}
-
-export interface HermesPluginCatalogItem {
-  key: string;
-  name: string;
-  description: string;
-  kind: string;
-  version: string | null;
-  author: string | null;
-  source: "bundled" | "user" | string;
-  status: "enabled" | "available" | "disabled" | string;
-  requiresEnv: string[];
-  path: string;
-}
