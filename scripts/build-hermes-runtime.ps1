@@ -109,16 +109,17 @@ function Write-RelocatableLaunchers {
         "@echo off",
         "setlocal",
         "set `"ROOT=%~dp0..\..`"",
-        "set `"PYTHONPATH=%ROOT%;%PYTHONPATH%`"",
-        "`"%ROOT%\venv\Scripts\python.exe`" -m hermes_cli.main %*"
+        "set `"PYTHONPATH=%ROOT%;%ROOT%\venv\Lib\site-packages;%PYTHONPATH%`"",
+        "`"%ROOT%\python\runtime\python.exe`" -m hermes_cli.main %*"
     )
 
     $psPath = Join-Path $scriptsDir "hermes.ps1"
     Set-Content -Path $psPath -Encoding ASCII -Value @(
         '$ErrorActionPreference = "Stop"',
         '$root = Resolve-Path (Join-Path $PSScriptRoot "..\..")',
-        '$env:PYTHONPATH = "$root;$env:PYTHONPATH"',
-        '& (Join-Path $root "venv\Scripts\python.exe") -m hermes_cli.main @args',
+        '$sitePackages = Join-Path $root "venv\Lib\site-packages"',
+        '$env:PYTHONPATH = "$root;$sitePackages;$env:PYTHONPATH"',
+        '& (Join-Path $root "python\runtime\python.exe") -m hermes_cli.main @args',
         'exit $LASTEXITCODE'
     )
 }
@@ -138,8 +139,9 @@ function Copy-PythonRuntime {
 
     $pythonDir = Join-Path $RuntimeDir "python"
     New-Item -ItemType Directory -Force -Path $pythonDir | Out-Null
-    $runtimeName = Split-Path $basePrefix -Leaf
+    $runtimeName = "runtime"
     $stagedBasePrefix = Join-Path $pythonDir $runtimeName
+    Remove-TreeIfExists $stagedBasePrefix
     Copy-Item -Recurse -Force $basePrefix $stagedBasePrefix
     Remove-RuntimeCaches $stagedBasePrefix
 
@@ -159,12 +161,21 @@ function Copy-PythonRuntime {
 function Test-StagedRuntime {
     param([string]$RuntimeDir)
 
-    $pythonExe = Join-Path $RuntimeDir "venv\Scripts\python.exe"
-    $output = & $pythonExe -m hermes_cli.main --version
-    if ($LASTEXITCODE -ne 0) {
-        throw "Staged Hermes runtime failed --version validation"
+    $pythonExe = Join-Path $RuntimeDir "python\runtime\python.exe"
+    if (-not (Test-Path $pythonExe)) {
+        throw "Could not find staged Python runtime at $pythonExe"
     }
-    return (($output | Select-Object -First 1) -as [string])
+    $previousPythonPath = $env:PYTHONPATH
+    $env:PYTHONPATH = "$RuntimeDir;$(Join-Path $RuntimeDir "venv\Lib\site-packages");$previousPythonPath"
+    try {
+        $output = & $pythonExe -m hermes_cli.main --version
+        if ($LASTEXITCODE -ne 0) {
+            throw "Staged Hermes runtime failed --version validation"
+        }
+        return (($output | Select-Object -First 1) -as [string])
+    } finally {
+        $env:PYTHONPATH = $previousPythonPath
+    }
 }
 
 function Assert-CleanRuntime {
