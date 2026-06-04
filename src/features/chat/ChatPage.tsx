@@ -262,6 +262,17 @@ export function ChatPage() {
       return;
     }
 
+    pendingInitialScrollSessionRef.current = selectedSessionId;
+    setNearBottom(true);
+  }, [selectedSessionId]);
+
+  useEffect(() => {
+    if (!selectedSessionId) {
+      pendingInitialScrollSessionRef.current = null;
+      setNearBottom(true);
+      return;
+    }
+
     if (sessionMessages.data) {
       if (loadedMessagesSessionRef.current !== selectedSessionId) {
         pendingInitialScrollSessionRef.current = selectedSessionId;
@@ -297,15 +308,35 @@ export function ChatPage() {
   }, [isStreaming, messages, nearBottom, scrollToBottom, settings.autoScrollOnStreaming]);
 
   useEffect(() => {
-    if (isStreaming || pendingInitialScrollSessionRef.current !== selectedSessionId) {
+    if (pendingInitialScrollSessionRef.current !== selectedSessionId) {
       return;
     }
 
-    pendingInitialScrollSessionRef.current = null;
+    const waitingForServerMessages = Boolean(sessionMessages.data?.length && messages.length === 0);
+    if (sessionMessages.isLoading || waitingForServerMessages) {
+      return;
+    }
+
     setNearBottom(true);
-    const frameId = window.requestAnimationFrame(() => scrollToBottom("auto"));
-    return () => window.cancelAnimationFrame(frameId);
-  }, [isStreaming, messages, scrollToBottom, selectedSessionId]);
+    let innerFrameId: number | null = null;
+    const frameId = window.requestAnimationFrame(() => {
+      innerFrameId = window.requestAnimationFrame(() => {
+        if (pendingInitialScrollSessionRef.current !== selectedSessionId) {
+          return;
+        }
+
+        scrollToBottom("auto");
+        pendingInitialScrollSessionRef.current = null;
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      if (innerFrameId !== null) {
+        window.cancelAnimationFrame(innerFrameId);
+      }
+    };
+  }, [messages, scrollToBottom, selectedSessionId, sessionMessages.data, sessionMessages.isLoading]);
 
   const cancelActiveStream = useCallback((sessionId = selectedSessionIdRef.current) => {
     if (!sessionId) {

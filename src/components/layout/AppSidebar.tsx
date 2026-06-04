@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { ArrowLeft, ArrowRight, Clock3, PackageSearch, PenLine, Search, Settings } from "lucide-react";
 import { NavLink, useNavigate } from "react-router";
@@ -20,11 +20,32 @@ const quickNav = [
 
 const settingsNav = { to: "/settings", label: "设置", icon: Settings } satisfies NavItem;
 
-export function AppSidebar() {
+interface AppSidebarProps {
+  maxWidth: number;
+  minWidth: number;
+  onResizePointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  width: number;
+}
+
+export function AppSidebar({ maxWidth, minWidth, onResizePointerDown, width }: AppSidebarProps) {
   const navigate = useNavigate();
 
   return (
     <aside className="relative flex h-full w-[var(--hermes-sidebar-width)] shrink-0 select-none flex-col overflow-hidden bg-sidebar px-3 pb-3 pt-[calc(var(--hermes-titlebar-height)+8px)] text-muted-foreground">
+      <button
+        type="button"
+        aria-label="调整侧边栏宽度"
+        aria-orientation="vertical"
+        aria-valuemax={maxWidth}
+        aria-valuemin={minWidth}
+        aria-valuenow={width}
+        className="group absolute inset-y-0 -right-1 z-20 w-2 cursor-col-resize"
+        onPointerDown={onResizePointerDown}
+        role="separator"
+      >
+        <span className="absolute inset-y-3 right-1/2 w-px translate-x-1/2 rounded-full bg-transparent transition-colors group-hover:bg-black/15 group-active:bg-black/25" />
+      </button>
+
       <div
         className="absolute inset-x-0 top-0 flex h-[var(--hermes-titlebar-height)] items-center justify-end gap-1 pr-4 text-muted-foreground/80"
         data-tauri-drag-region="deep"
