@@ -7,9 +7,7 @@ mod service;
 mod types;
 
 use tauri::AppHandle;
-use types::{
-    RuntimeCommandResult, RuntimeConnection, RuntimeDashboardApiInput, RuntimeStatus,
-};
+use types::{RuntimeCommandResult, RuntimeConnection, RuntimeDashboardApiInput, RuntimeStatus};
 
 #[tauri::command]
 pub async fn runtime_status(app: AppHandle) -> Result<RuntimeStatus, String> {

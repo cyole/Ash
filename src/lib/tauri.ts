@@ -77,6 +77,14 @@ export async function saveAppSettings(settings: Record<string, unknown>): Promis
   return invoke<AppSettingsLoadResult>("app_settings_save", { input: { settings } });
 }
 
+export async function setWindowTranslucency(enabled: boolean): Promise<void> {
+  if (!isTauriRuntime()) {
+    return;
+  }
+
+  await invoke("window_translucency_set", { enabled });
+}
+
 export async function getRuntimeStatus(): Promise<HermesStatus> {
   if (!isTauriRuntime()) {
     return {

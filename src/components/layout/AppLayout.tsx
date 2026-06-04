@@ -57,7 +57,7 @@ export function AppLayout() {
   }, [sidebarWidth]);
 
   return (
-    <div className="flex h-full min-w-[960px] bg-background text-foreground" style={layoutStyle}>
+    <div className="flex h-full min-w-[960px] text-foreground" style={layoutStyle}>
       <AppSidebar
         maxWidth={sidebarMaxWidth}
         minWidth={sidebarMinWidth}

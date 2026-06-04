@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { isTauriRuntime, loadAppSettings, saveAppSettings } from "@/lib/tauri";
+import { isTauriRuntime, loadAppSettings, saveAppSettings, setWindowTranslucency } from "@/lib/tauri";
 
 export const themeModes = ["light", "dark", "system"] as const;
 export const animationModes = ["disabled", "agile", "elegant"] as const;
@@ -31,6 +31,7 @@ export interface HermesSettings {
   highlighterTheme: string;
   mermaidTheme: string;
   themeMode: ThemeMode;
+  translucentSidebar: boolean;
 }
 
 interface HermesSettingsContextValue {
@@ -55,6 +56,7 @@ export const defaultHermesSettings: HermesSettings = {
   highlighterTheme: "lobe-theme",
   mermaidTheme: "lobe-theme",
   themeMode: "system",
+  translucentSidebar: true,
 };
 
 const HermesSettingsContext = createContext<HermesSettingsContextValue | null>(null);
@@ -181,6 +183,7 @@ export function HermesSettingsProvider({ children }: { children: ReactNode }) {
       root.dataset.hermesTheme = settings.themeMode;
       root.dataset.hermesAccent = settings.accentColor;
       root.dataset.hermesAnimation = settings.animationMode;
+      root.dataset.hermesTranslucentSidebar = settings.translucentSidebar ? "true" : "false";
     }
 
     applyTheme();
@@ -189,7 +192,13 @@ export function HermesSettingsProvider({ children }: { children: ReactNode }) {
     return () => {
       darkQuery.removeEventListener("change", applyTheme);
     };
-  }, [settings.accentColor, settings.animationMode, settings.themeMode]);
+  }, [settings.accentColor, settings.animationMode, settings.themeMode, settings.translucentSidebar]);
+
+  useEffect(() => {
+    void setWindowTranslucency(settings.translucentSidebar).catch((error) => {
+      console.error("Failed to apply native window translucency.", error);
+    });
+  }, [settings.translucentSidebar]);
 
   useEffect(() => {
     function handleContextMenu(event: MouseEvent) {
@@ -257,6 +266,7 @@ function serializeSettings(settings: HermesSettings): Record<string, unknown> {
     highlighterTheme: settings.highlighterTheme,
     mermaidTheme: settings.mermaidTheme,
     themeMode: settings.themeMode,
+    translucentSidebar: settings.translucentSidebar,
   };
 }
 
@@ -293,6 +303,10 @@ function normalizeSettings(input: Partial<HermesSettings>): HermesSettings {
     themeMode: isOneOf(input.themeMode, themeModes)
       ? input.themeMode
       : defaultHermesSettings.themeMode,
+    translucentSidebar:
+      typeof input.translucentSidebar === "boolean"
+        ? input.translucentSidebar
+        : defaultHermesSettings.translucentSidebar,
   };
 }
 

@@ -489,14 +489,25 @@ fn request_dashboard_termination(child: &mut Child) -> Result<(), String> {
     {
         Ok(status) if status.success() => Ok(()),
         Ok(status) => {
-            if child.try_wait().map_err(|error| error.to_string())?.is_some() {
+            if child
+                .try_wait()
+                .map_err(|error| error.to_string())?
+                .is_some()
+            {
                 Ok(())
             } else {
-                Err(format!("发送 SIGTERM 失败，kill 退出码：{:?}", status.code()))
+                Err(format!(
+                    "发送 SIGTERM 失败，kill 退出码：{:?}",
+                    status.code()
+                ))
             }
         }
         Err(error) => {
-            if child.try_wait().map_err(|error| error.to_string())?.is_some() {
+            if child
+                .try_wait()
+                .map_err(|error| error.to_string())?
+                .is_some()
+            {
                 Ok(())
             } else {
                 Err(error.to_string())

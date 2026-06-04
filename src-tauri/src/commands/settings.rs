@@ -80,10 +80,7 @@ fn app_settings_save_impl(
 }
 
 fn extract_settings(value: Value) -> Option<Value> {
-    let settings = value
-        .get("settings")
-        .cloned()
-        .unwrap_or(value);
+    let settings = value.get("settings").cloned().unwrap_or(value);
 
     (!settings.is_null()).then_some(settings)
 }

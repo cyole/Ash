@@ -71,7 +71,8 @@ pub fn run() {
             commands::runtime::runtime_doctor,
             commands::runtime::runtime_setup_portal,
             commands::settings::app_settings_load,
-            commands::settings::app_settings_save
+            commands::settings::app_settings_save,
+            commands::window::window_translucency_set
         ])
         .build(tauri::generate_context!())
         .expect("Hermes 桌面应用运行失败");

@@ -34,7 +34,7 @@ export function AppSidebar({ maxWidth, minWidth, onResizePointerDown, width }: A
   const navigate = useNavigate();
 
   return (
-    <aside className="hermes-sidebar-surface relative flex h-full w-[var(--hermes-sidebar-width)] shrink-0 select-none flex-col overflow-hidden px-3 pb-3 pt-[calc(var(--hermes-titlebar-height)+8px)] text-muted-foreground">
+    <aside className="hermes-sidebar-surface relative flex h-full w-[var(--hermes-sidebar-width)] shrink-0 select-none flex-col overflow-hidden px-3.5 pb-3 pt-[calc(var(--hermes-titlebar-height)+10px)] text-muted-foreground">
       <button
         type="button"
         aria-label="调整侧边栏宽度"
@@ -61,13 +61,13 @@ export function AppSidebar({ maxWidth, minWidth, onResizePointerDown, width }: A
         </SidebarNavigationButton>
       </div>
 
-      <nav className="shrink-0 space-y-0.5" aria-label="快捷入口">
+      <nav className="shrink-0 space-y-1" aria-label="快捷入口">
         {quickNav.map((item) => (
           <SidebarLink key={item.to} item={item} />
         ))}
       </nav>
 
-      <div className="mt-4 min-h-0 flex-1">
+      <div className="mt-5 min-h-0 flex-1">
         <ChatSessionsSidebar />
       </div>
 
@@ -94,7 +94,7 @@ function SidebarNavigationButton({
       aria-label={label}
       title={label}
       onClick={onClick}
-      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-black/[0.04] hover:text-foreground"
+      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
     >
       {children}
     </button>
@@ -108,14 +108,14 @@ function SidebarLink({ className, item }: { className?: string; item: NavItem })
       end={item.to === "/"}
       className={({ isActive }) =>
         cn(
-          "flex h-9 items-center gap-2.5 rounded-lg px-2 text-[13px] transition-colors hover:bg-black/[0.04] hover:text-foreground",
-          isActive && "font-medium text-foreground",
+          "flex h-10 items-center gap-3 rounded-lg px-2.5 text-[15px] font-semibold tracking-normal transition-colors hover:bg-foreground/[0.06] hover:text-foreground",
+          isActive && "bg-foreground/[0.07] text-foreground",
           className,
         )
       }
     >
-      <item.icon className="h-4 w-4" />
-      <span>{item.label}</span>
+      <item.icon className="h-5 w-5 shrink-0 stroke-[2.1]" />
+      <span className="min-w-0 truncate">{item.label}</span>
     </NavLink>
   );
 }
@@ -132,7 +132,7 @@ function ThemeModeToggleButton() {
       type="button"
       aria-label={label}
       title={label}
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-black/[0.04] hover:text-foreground"
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
       onClick={() => updateSettings({ themeMode: nextTheme })}
     >
       <Icon className="h-4 w-4" />

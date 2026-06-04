@@ -395,6 +395,16 @@ function AppearanceSection() {
 
       <SettingsGroup title="应用外观">
         <SettingsRow
+          label="半透明侧边栏"
+          description="使用系统原生窗口材质显示左侧栏；关闭后使用实色侧边栏。"
+          action={
+            <SwitchControl
+              checked={settings.translucentSidebar}
+              onChange={(translucentSidebar) => updateSettings({ translucentSidebar })}
+            />
+          }
+        />
+        <SettingsRow
           label="调色盘"
           action={
             <div className="flex flex-col items-end gap-4">

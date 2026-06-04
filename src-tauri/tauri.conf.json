@@ -10,6 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "title": "Hermes",
@@ -20,6 +21,16 @@
         "decorations": true,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
+        "transparent": true,
+        "backgroundColor": "#00000000",
+        "windowEffects": {
+          "effects": [
+            "sidebar",
+            "mica",
+            "acrylic"
+          ],
+          "state": "active"
+        },
         "trafficLightPosition": {
           "x": 16,
           "y": 24
