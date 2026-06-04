@@ -1,7 +1,10 @@
-import { Archive, Pin } from "lucide-react";
+import { useEffect } from "react";
+import { Archive, LoaderCircle, Pin } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router";
 import { chatPathForSession, chatSessionSearchParam } from "@/features/chat/chat-route";
+import type { ChatSessionActivity } from "@/features/chat/chat-session-activity";
+import { markChatSessionViewed, useChatSessionActivities } from "@/features/chat/chat-session-activity";
 import { errorMessage } from "@/lib/errors";
 import type { HermesSession } from "@/lib/hermes";
 import { hermesQueryKeys, useHermesApi } from "@/lib/hermes/queries";
@@ -13,11 +16,18 @@ export function ChatSessionsSidebar() {
   const [searchParams] = useSearchParams();
   const selectedSessionId = searchParams.get(chatSessionSearchParam);
   const { apiReady, apiUrl, client, sessionToken } = useHermesApi();
+  const sessionActivities = useChatSessionActivities();
   const sessions = useQuery({
     enabled: apiReady,
     queryKey: hermesQueryKeys.sessions(apiUrl, Boolean(sessionToken)),
     queryFn: () => client.listSessions(),
   });
+
+  useEffect(() => {
+    if (selectedSessionId) {
+      markChatSessionViewed(selectedSessionId);
+    }
+  }, [selectedSessionId]);
 
   return (
     <section className="flex h-full min-h-0 flex-col" aria-label="对话">
@@ -34,8 +44,12 @@ export function ChatSessionsSidebar() {
               <ChatSessionItem
                 key={session.id}
                 active={session.id === selectedSessionId}
+                activity={sessionActivities[session.id]}
                 session={session}
-                onClick={() => navigate(chatPathForSession(session.id))}
+                onClick={() => {
+                  markChatSessionViewed(session.id);
+                  navigate(chatPathForSession(session.id));
+                }}
               />
             ))}
           </div>
@@ -49,13 +63,18 @@ export function ChatSessionsSidebar() {
 
 function ChatSessionItem({
   active,
+  activity,
   onClick,
   session,
 }: {
   active: boolean;
+  activity?: ChatSessionActivity;
   onClick: () => void;
   session: HermesSession;
 }) {
+  const generating = activity?.kind === "generating";
+  const unread = activity?.kind === "unread";
+
   return (
     <button
       type="button"
@@ -63,28 +82,39 @@ function ChatSessionItem({
       aria-current={active ? "page" : undefined}
       className={cn(
         "group flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-muted-foreground transition-colors hover:bg-black/[0.04] hover:text-foreground",
+        generating && "bg-black/[0.045] text-foreground",
         active && "bg-black/[0.055] font-medium text-foreground",
       )}
     >
       <span className="min-w-0 flex-1 truncate text-[13px] leading-5">{sessionTitle(session)}</span>
-      <span
-        className={cn(
-          "ml-2 shrink-0 text-[12px] leading-5 text-muted-foreground transition-opacity group-hover:hidden",
-          active && "hidden",
-        )}
-      >
-        {formatSidebarSessionTime(sessionUpdatedAt(session))}
-      </span>
-      <span
-        className={cn(
-          "ml-1 hidden shrink-0 items-center gap-1 text-muted-foreground/80 transition-colors group-hover:flex",
-          active && "flex",
-        )}
-        aria-hidden="true"
-      >
-        <Pin className="h-3.5 w-3.5" />
-        <Archive className="h-3.5 w-3.5" />
-      </span>
+      {generating ? (
+        <span className="ml-1 shrink-0 text-muted-foreground/80" role="status" aria-label="正在等待回复">
+          <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+        </span>
+      ) : unread ? (
+        <span className="ml-1 h-1.5 w-1.5 shrink-0 rounded-full bg-foreground/70" role="status" aria-label="有新回复" />
+      ) : (
+        <>
+          <span
+            className={cn(
+              "ml-2 shrink-0 text-[12px] leading-5 text-muted-foreground transition-opacity group-hover:hidden",
+              active && "hidden",
+            )}
+          >
+            {formatSidebarSessionTime(sessionUpdatedAt(session))}
+          </span>
+          <span
+            className={cn(
+              "ml-1 hidden shrink-0 items-center gap-1 text-muted-foreground/80 transition-colors group-hover:flex",
+              active && "flex",
+            )}
+            aria-hidden="true"
+          >
+            <Pin className="h-3.5 w-3.5" />
+            <Archive className="h-3.5 w-3.5" />
+          </span>
+        </>
+      )}
     </button>
   );
 }

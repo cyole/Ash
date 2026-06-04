@@ -8,6 +8,7 @@ import { useNavigate } from "react-router";
 import { Button } from "@/components/ui/button";
 import type { PendingChatNavigationState } from "@/features/chat/chat-route";
 import { chatPathForSession } from "@/features/chat/chat-route";
+import { ComposerResizeHandle, useComposerResize } from "@/features/chat/components/ComposerResizeHandle";
 import { useHermesApi } from "@/lib/hermes/queries";
 
 const newChatEditorPlugins = [ReactListPlugin, ReactLinkPlugin, ReactCodeblockPlugin];
@@ -22,6 +23,7 @@ export function HomePage() {
   const navigate = useNavigate();
   const { apiReady, status, tauriRuntime } = useHermesApi();
   const editor = useEditor();
+  const composerResize = useComposerResize({ defaultHeight: 126, maxHeight: 360, minHeight: 126 });
   const [draft, setDraft] = useState("");
   const [editorReady, setEditorReady] = useState(false);
   const runtimeReady = !tauriRuntime || Boolean(status.data?.dashboardRunning && status.data.sessionTokenConfigured);
@@ -69,7 +71,7 @@ export function HomePage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-auto bg-[linear-gradient(180deg,hsl(var(--muted)/0.28)_0%,hsl(var(--background))_34%,hsl(var(--background))_100%)]">
+    <div className="flex h-full min-h-0 flex-col overflow-auto bg-card">
       <main className="mx-auto flex min-h-full w-full max-w-[900px] flex-col justify-center px-6 py-10">
         <div className="mb-7 text-center">
           <div className="mx-auto mb-5 flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-background text-foreground shadow-sm">
@@ -81,20 +83,25 @@ export function HomePage() {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="mx-auto w-full max-w-[760px]">
+        <form onSubmit={handleSubmit} className="relative mx-auto w-full max-w-[760px]">
+          <ComposerResizeHandle
+            onMouseDown={composerResize.handleMouseDown}
+            onPointerDown={composerResize.handlePointerDown}
+          />
           <ChatInput
             resize={false}
-            minHeight={126}
-            maxHeight={220}
+            minHeight={composerResize.height}
+            maxHeight={360}
             onBodyClick={() => editor.focus()}
-            className="!overflow-hidden !rounded-2xl !border !border-border/70 !bg-background/95 !shadow-[0_18px_55px_rgba(15,23,42,0.12)] !backdrop-blur focus-within:!border-primary/35 focus-within:!ring-2 focus-within:!ring-primary/10 dark:!shadow-[0_18px_55px_rgba(0,0,0,0.32)]"
+            className="!overflow-hidden !rounded-2xl !border !border-border/70 !bg-card !shadow-[0_18px_55px_rgba(15,23,42,0.10)] focus-within:!border-primary/35 focus-within:!ring-2 focus-within:!ring-primary/10 dark:!shadow-[0_18px_55px_rgba(0,0,0,0.32)]"
             classNames={{
-              body: "!min-h-[126px] !px-0 !py-0",
-              footer: "!px-0",
-              header: "!px-0",
+              body: "!bg-card !px-0 !py-0",
+              footer: "!bg-card !px-0",
+              header: "!bg-card !px-0",
             }}
             styles={{
               body: {
+                height: composerResize.height,
                 overflow: "auto",
               },
               footer: {
@@ -136,9 +143,13 @@ export function HomePage() {
               pasteMarkdownAutoConvertThreshold={3}
               placeholder={submittingDisabled ? "本地服务就绪后可以开始聊天" : "给 Hermes 发消息"}
               plugins={newChatEditorPlugins}
+              style={{
+                height: composerResize.height,
+                minHeight: composerResize.height,
+              }}
               type="text"
               variant="chat"
-              className="min-h-[126px] max-h-[220px] px-4 py-3 text-[15px] leading-6 text-foreground outline-none [&_[contenteditable]]:min-h-[108px] [&_[contenteditable]]:outline-none"
+              className="hermes-composer-editor hermes-composer-editor-home h-full px-4 py-3 text-[15px] leading-6 text-foreground outline-none"
               theme={{
                 fontSize: 15,
                 lineHeight: 1.55,

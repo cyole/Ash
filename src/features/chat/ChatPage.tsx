@@ -16,14 +16,19 @@ import {
   Sparkles,
   Square,
   Trash2,
-  UserRound,
-  Wrench,
 } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { chatPathForSession, chatSessionSearchParam, readPendingChatPrompt } from "@/features/chat/chat-route";
+import {
+  clearChatSessionActivity,
+  markChatSessionFinished,
+  markChatSessionGenerating,
+  markChatSessionViewed,
+} from "@/features/chat/chat-session-activity";
+import { ComposerResizeHandle, useComposerResize } from "@/features/chat/components/ComposerResizeHandle";
 import { MarkdownMessage } from "@/features/chat/components/MarkdownMessage";
 import { useHermesSettings } from "@/features/settings/settings-store";
 import { errorMessage } from "@/lib/errors";
@@ -31,6 +36,7 @@ import type { HermesMessage, HermesSession, HermesStreamEvent } from "@/lib/herm
 import { hermesQueryKeys, useHermesApi } from "@/lib/hermes/queries";
 import { cn } from "@/lib/utils";
 import { createHermesTuiSession, interruptHermesSession, streamHermesSessionChat } from "@/lib/tauri";
+import type { ModelInfoResponse } from "@/types/hermes-dashboard";
 
 interface ChatMessage {
   id: string;
@@ -90,6 +96,15 @@ interface ToolUpdate {
   toolArgs?: string;
 }
 
+interface ChatUsageStats {
+  contextMax?: number;
+  contextPercent?: number;
+  contextUsed?: number;
+  input: number;
+  output: number;
+  total: number;
+}
+
 interface SendPromptOptions {
   forceNewSession?: boolean;
 }
@@ -98,6 +113,7 @@ type ActiveStreamMap = Record<string, string>;
 type DraftUpdate = string | ((current: string) => string);
 type MessagesBySession = Record<string, ChatMessage[]>;
 type QueuedPromptsBySession = Record<string, QueuedPrompt[]>;
+type UsageBySession = Record<string, ChatUsageStats>;
 
 const suggestedPrompts = [
   "整理一下今天最重要的三个工作项",
@@ -132,10 +148,12 @@ export function ChatPage() {
   const [draft, setDraft] = useState("");
   const [activeStreams, setActiveStreams] = useState<ActiveStreamMap>({});
   const [queuedPromptsBySession, setQueuedPromptsBySession] = useState<QueuedPromptsBySession>({});
+  const [usageBySession, setUsageBySession] = useState<UsageBySession>({});
   const [sendError, setSendError] = useState<string | null>(null);
   const [nearBottom, setNearBottom] = useState(true);
   const [activeCommandIndex, setActiveCommandIndex] = useState(0);
   const composerEditor = useEditor();
+  const composerResize = useComposerResize({ defaultHeight: 84, maxHeight: 360, minHeight: 84 });
   const [composerReady, setComposerReady] = useState(false);
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
   const handledPendingPromptRef = useRef<string | null>(null);
@@ -162,10 +180,29 @@ export function ChatPage() {
   });
 
   const runtimeReady = !tauriRuntime || Boolean(status.data?.dashboardRunning && status.data.sessionTokenConfigured);
+  const modelInfo = useQuery({
+    enabled: apiReady && runtimeReady,
+    queryKey: ["chat-model-info", apiUrl, Boolean(sessionToken)] as const,
+    queryFn: () => client.getGlobalModelInfo(),
+    retry: false,
+    staleTime: 30_000,
+  });
   const messages = selectedSessionId ? messagesBySession[selectedSessionId] ?? [] : [];
   const activeStreamId = selectedSessionId ? activeStreams[selectedSessionId] ?? null : null;
   const queuedPrompts = selectedSessionId ? queuedPromptsBySession[selectedSessionId] ?? [] : [];
   const isStreaming = activeStreamId !== null;
+  const selectedSession = useMemo(
+    () => selectedSessionId ? sessions.data?.find((session) => session.id === selectedSessionId) ?? null : null,
+    [selectedSessionId, sessions.data],
+  );
+  const contextUsage = useMemo(
+    () => buildContextUsage(
+      selectedSession,
+      modelInfo.data,
+      selectedSessionId ? usageBySession[selectedSessionId] : undefined,
+    ),
+    [modelInfo.data, selectedSession, selectedSessionId, usageBySession],
+  );
   const displayItems = useMemo(() => buildChatDisplayItems(messages), [messages]);
   const canSubmit = Boolean(draft.trim() && apiReady && runtimeReady);
   const draftKey = draftStorageSessionKey(selectedSessionId);
@@ -223,6 +260,9 @@ export function ChatPage() {
 
   useEffect(() => {
     selectedSessionIdRef.current = selectedSessionId;
+    if (selectedSessionId) {
+      markChatSessionViewed(selectedSessionId);
+    }
   }, [selectedSessionId]);
 
   useEffect(() => {
@@ -348,6 +388,7 @@ export function ChatPage() {
     abortControllersRef.current.get(sessionId)?.abort();
     abortControllersRef.current.delete(sessionId);
     setActiveStreams((current) => omitRecordKey(current, sessionId));
+    clearChatSessionActivity(sessionId);
     updateSessionMessages(sessionId, (current) =>
       current.map((message) =>
         message.status === "streaming"
@@ -457,6 +498,7 @@ export function ChatPage() {
         ...current,
         [sessionId]: assistantMessage.id,
       }));
+      markChatSessionGenerating(sessionId);
 
       const controller = new AbortController();
       abortControllersRef.current.set(sessionId, controller);
@@ -490,6 +532,11 @@ export function ChatPage() {
         const streamError = streamEventError(streamEvent);
         if (streamError) {
           throw new Error(streamError);
+        }
+
+        const usageUpdate = streamEventUsage(streamEvent);
+        if (usageUpdate) {
+          updateSessionUsage(sessionId, usageUpdate);
         }
 
         const reasoningDelta = streamEventReasoningText(streamEvent);
@@ -568,6 +615,10 @@ export function ChatPage() {
       if (completedSessionId && streamTokensRef.current.get(completedSessionId) === token) {
         setActiveStreams((current) => omitRecordKey(current, completedSessionId));
         abortControllersRef.current.delete(completedSessionId);
+        const hasQueuedPrompt = Boolean(queuedPromptsRef.current[completedSessionId]?.length);
+        if (!(shouldRunQueuedPrompt && hasQueuedPrompt)) {
+          markChatSessionFinished(completedSessionId, selectedSessionIdRef.current === completedSessionId);
+        }
       }
 
       if (completedSessionId && streamTokensRef.current.get(completedSessionId) === token && shouldRunQueuedPrompt) {
@@ -610,6 +661,13 @@ export function ChatPage() {
     setQueuedPromptsBySession((current) => updateQueuedPrompts(current, selectedSessionId, (items) =>
       items.filter((item) => item.id !== id),
     ));
+  }
+
+  function updateSessionUsage(sessionId: string, usage: ChatUsageStats) {
+    setUsageBySession((current) => ({
+      ...current,
+      [sessionId]: mergeUsageStats(current[sessionId], usage),
+    }));
   }
 
   async function copyMessage(message: ChatMessage) {
@@ -852,8 +910,8 @@ export function ChatPage() {
   }, [location.key, location.state, navigate, setComposerDraft]);
 
   return (
-    <div className="flex h-full min-h-0 bg-background">
-      <section className="flex min-w-0 flex-1 flex-col bg-[linear-gradient(180deg,hsl(var(--muted)/0.28)_0%,hsl(var(--background))_22%,hsl(var(--background))_100%)]">
+    <div className="flex h-full min-h-0 bg-card">
+      <section className="flex min-w-0 flex-1 flex-col bg-card">
         <div ref={scrollRef} onScroll={handleScroll} className="relative min-h-0 flex-1 overflow-auto">
           <div className="mx-auto flex min-h-full w-full max-w-[900px] flex-col px-5 pb-8 pt-7">
             {messages.length === 0 && !sessionMessages.isLoading ? (
@@ -890,20 +948,9 @@ export function ChatPage() {
             ) : null}
             <div ref={bottomRef} className="h-1" />
           </div>
-
-          {!nearBottom && messages.length > 0 ? (
-            <Button
-              type="button"
-              variant="outline"
-              className="absolute bottom-4 left-1/2 h-8 -translate-x-1/2 rounded-full bg-card/95 shadow-md"
-              onClick={() => scrollToBottom("smooth")}
-            >
-              回到底部
-            </Button>
-          ) : null}
         </div>
 
-        <form onSubmit={handleSubmit} className="shrink-0 bg-gradient-to-t from-background via-background/95 to-background/0 px-5 pb-4 pt-3">
+        <form onSubmit={handleSubmit} className="shrink-0 bg-gradient-to-t from-card via-card/95 to-card/0 px-5 pb-4 pt-3">
           <div className="mx-auto w-full max-w-[900px]">
             {sendError ? (
               <div className="mb-3 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm leading-5 text-destructive">
@@ -919,19 +966,24 @@ export function ChatPage() {
                   onHover={setActiveCommandIndex}
                 />
               ) : null}
+              <ComposerResizeHandle
+                onMouseDown={composerResize.handleMouseDown}
+                onPointerDown={composerResize.handlePointerDown}
+              />
               <ChatInput
                 resize={false}
-                minHeight={84}
-                maxHeight={192}
+                minHeight={composerResize.height}
+                maxHeight={360}
                 onBodyClick={() => composerEditor.focus()}
-                className="!overflow-hidden !rounded-2xl !border !border-border/70 !bg-background/95 !shadow-[0_18px_55px_rgba(15,23,42,0.12)] !backdrop-blur focus-within:!border-primary/35 focus-within:!ring-2 focus-within:!ring-primary/10 dark:!shadow-[0_18px_55px_rgba(0,0,0,0.32)]"
+                className="!overflow-hidden !rounded-2xl !border !border-border/70 !bg-card !shadow-[0_18px_55px_rgba(15,23,42,0.10)] focus-within:!border-primary/35 focus-within:!ring-2 focus-within:!ring-primary/10 dark:!shadow-[0_18px_55px_rgba(0,0,0,0.32)]"
                 classNames={{
-                  body: "!min-h-[84px] !px-0 !py-0",
-                  footer: "!px-0",
-                  header: "!px-0",
+                  body: "!bg-card !px-0 !py-0",
+                  footer: "!bg-card !px-0",
+                  header: "!bg-card !px-0",
                 }}
                 styles={{
                   body: {
+                    height: composerResize.height,
                     overflow: "auto",
                   },
                   footer: {
@@ -967,8 +1019,16 @@ export function ChatPage() {
                 )}
                 footer={(
                   <div className="flex items-center justify-between gap-3 px-3 pb-3 pt-1">
-                    <div className="min-w-0 truncate text-xs text-muted-foreground">
-                      {isStreaming ? "正在生成，新的消息会加入队列。" : "支持富文本粘贴，Shift Enter 换行"}
+                    <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+                      <span className="min-w-0 truncate">
+                        {isStreaming ? "正在生成，新的消息会加入队列。" : "支持富文本粘贴，Shift Enter 换行"}
+                      </span>
+                      {contextUsage ? (
+                        <>
+                          <span className="hidden h-3 w-px shrink-0 bg-border/80 sm:block" />
+                          <ContextUsageIndicator usage={contextUsage} />
+                        </>
+                      ) : null}
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       {isStreaming ? (
@@ -1012,9 +1072,13 @@ export function ChatPage() {
                   pasteMarkdownAutoConvertThreshold={3}
                   placeholder={runtimeReady ? "给 Hermes 发消息，输入 / 可使用本地命令" : "本地服务就绪后可以开始聊天"}
                   plugins={composerEditorPlugins}
+                  style={{
+                    height: composerResize.height,
+                    minHeight: composerResize.height,
+                  }}
                   type="text"
                   variant="chat"
-                  className="min-h-[84px] max-h-48 px-4 py-2 text-[15px] leading-6 text-foreground outline-none [&_[contenteditable]]:min-h-[72px] [&_[contenteditable]]:outline-none"
+                  className="hermes-composer-editor hermes-composer-editor-chat h-full px-4 py-2 text-[15px] leading-6 text-foreground outline-none"
                   theme={{
                     fontSize: 15,
                     lineHeight: 1.55,
@@ -1058,29 +1122,18 @@ function AssistantTurnRow({
   const copyableContent = displayContent.trim();
 
   return (
-    <article className={cn("flex gap-3", messageTransitionClasses[transitionMode])}>
-      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
+    <article className={cn("group/message flex gap-3 py-1", messageTransitionClasses[transitionMode])}>
+      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
         <Bot className="h-4 w-4" />
       </div>
-      <div className="min-w-0 max-w-[calc(100%-44px)] flex-1">
+      <div className="min-w-0 max-w-[min(760px,calc(100%-44px))] flex-1">
+        <MessageAuthorLabel />
         <div
           className={cn(
-            "rounded-2xl border border-border/70 bg-background/75 px-4 py-3 text-foreground shadow-sm",
-            errors.length > 0 && "border-destructive/30 bg-destructive/5",
+            "wrap-anywhere text-pretty text-[15px] leading-7 text-foreground",
+            errors.length > 0 && "rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2",
           )}
         >
-          {copyableContent ? (
-            <div className="mb-2 flex justify-start">
-              <button
-                type="button"
-                onClick={() => onCopy(copyableContent)}
-                className="inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <Copy className="h-3 w-3" />
-                复制
-              </button>
-            </div>
-          ) : null}
           {reasoningText.trim() ? (
             <ThinkingBlock
               content={reasoningText}
@@ -1100,6 +1153,7 @@ function AssistantTurnRow({
             </p>
           ))}
         </div>
+        {copyableContent ? <MessageActions align="left" onCopy={() => onCopy(copyableContent)} /> : null}
       </div>
     </article>
   );
@@ -1119,7 +1173,6 @@ function ChatMessageRow({
   }
 
   const isUser = message.role === "user";
-  const Icon = isUser ? UserRound : Bot;
   const parsedThinking = parseThinking(message.content, message.status === "streaming");
   const reasoningText = [message.reasoning, ...parsedThinking.segments, parsedThinking.pending]
     .filter((part): part is string => typeof part === "string" && part.trim() !== "")
@@ -1130,43 +1183,27 @@ function ChatMessageRow({
   return (
     <article
       className={cn(
-        "flex gap-3",
+        "group/message flex gap-3 py-1",
         isUser && "justify-end",
         messageTransitionClasses[transitionMode],
       )}
     >
       {!isUser ? (
-        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
-          <Icon className="h-4 w-4" />
+        <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+          <Bot className="h-4 w-4" />
         </div>
       ) : null}
-      <div className={cn("min-w-0 max-w-[78%]", !isUser && "max-w-[calc(100%-44px)] flex-1")}>
+      <div className={cn("min-w-0 max-w-[min(72%,680px)]", !isUser && "max-w-[min(760px,calc(100%-44px))] flex-1")}>
+        {!isUser ? <MessageAuthorLabel /> : null}
         <div
           className={cn(
-            "rounded-2xl px-4 py-3 shadow-sm",
+            "wrap-anywhere text-pretty text-[15px] leading-7",
             isUser
-              ? "bg-primary text-primary-foreground shadow-primary/15"
-              : "border border-border/70 bg-background/75 text-foreground",
-            message.status === "error" && "border-destructive/30 bg-destructive/5",
+              ? "rounded-2xl rounded-tr-md bg-muted px-4 py-2.5 text-foreground"
+              : "text-foreground",
+            message.status === "error" && "rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2",
           )}
         >
-          {message.content.trim() ? (
-            <div className={cn("mb-2 flex", isUser ? "justify-end" : "justify-start")}>
-              <button
-                type="button"
-                onClick={onCopy}
-                className={cn(
-                  "inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] transition-colors",
-                  isUser
-                    ? "text-primary-foreground/70 hover:bg-white/10 hover:text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                )}
-              >
-                <Copy className="h-3 w-3" />
-                复制
-              </button>
-            </div>
-          ) : null}
           {isUser ? (
             <MarkdownMessage tone="user">{message.content}</MarkdownMessage>
           ) : (
@@ -1190,13 +1227,79 @@ function ChatMessageRow({
             </p>
           ) : null}
         </div>
+        {message.content.trim() ? <MessageActions align={isUser ? "right" : "left"} onCopy={onCopy} /> : null}
       </div>
-      {isUser ? (
-        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-          <Icon className="h-4 w-4" />
-        </div>
-      ) : null}
     </article>
+  );
+}
+
+function MessageAuthorLabel() {
+  return (
+    <div className="mb-1 flex items-center gap-2 text-[13px] font-medium leading-5 text-foreground">
+      <span>Hermes</span>
+      <span className="text-xs font-normal text-muted-foreground">AI</span>
+    </div>
+  );
+}
+
+function MessageActions({ align, onCopy }: { align: "left" | "right"; onCopy: () => void }) {
+  return (
+    <div
+      className={cn(
+        "mt-1 flex opacity-0 transition-opacity duration-150 group-hover/message:opacity-100 focus-within:opacity-100",
+        align === "right" ? "justify-end" : "justify-start",
+      )}
+    >
+      <button
+        type="button"
+        onClick={onCopy}
+        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
+        title="复制"
+        aria-label="复制消息"
+      >
+        <Copy className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
+function ContextUsageIndicator({ usage }: { usage: ChatUsageStats }) {
+  const contextMax = usage.contextMax ?? 0;
+  const hasContextWindow = contextMax > 0;
+  const percent = hasContextWindow
+    ? clampPercent(usage.contextPercent ?? ((usage.contextUsed ?? usage.total) / contextMax) * 100)
+    : null;
+  const filledSegments = percent === null ? 0 : Math.round((percent / 100) * 10);
+  const label = usageContextLabel(usage);
+
+  if (!label) {
+    return null;
+  }
+
+  return (
+    <div
+      className="hidden shrink-0 items-center gap-1.5 whitespace-nowrap text-[11px] tabular-nums text-muted-foreground/75 sm:flex"
+      title={hasContextWindow ? `上下文占用 ${label}，${Math.round(percent ?? 0)}%` : `本会话已用 ${label}`}
+    >
+      <span className="text-muted-foreground/60">上下文</span>
+      <span>{label}</span>
+      {hasContextWindow ? (
+        <>
+          <span className="grid w-10 grid-cols-10 gap-px" aria-hidden="true">
+            {Array.from({ length: 10 }, (_, index) => (
+              <span
+                key={index}
+                className={cn(
+                  "h-2 rounded-[1px] bg-muted-foreground/18",
+                  index < filledSegments && "bg-muted-foreground/50",
+                )}
+              />
+            ))}
+          </span>
+          <span>{Math.round(percent ?? 0)}%</span>
+        </>
+      ) : null}
+    </div>
   );
 }
 
@@ -1206,19 +1309,19 @@ function ThinkingBlock({ content, streaming }: { content: string; streaming: boo
   const characterCount = [...content].length;
 
   return (
-    <div className="mb-3 overflow-hidden rounded-lg border border-border/70 bg-muted/25">
+    <div className="mb-2 text-xs text-muted-foreground/70">
       <button
         type="button"
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/70"
+        className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-md px-1.5 text-left transition-colors hover:bg-muted/70 hover:text-foreground"
         onClick={() => setExpandedOverride((current) => !(current ?? false))}
       >
         {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
         <Brain className="h-3.5 w-3.5" />
-        <span className="font-medium text-foreground">{streaming ? "正在思考" : "思考过程"}</span>
-        <span className="ml-auto tabular-nums">{characterCount} 字</span>
+        <span>{streaming ? "正在思考" : "思考过程"}</span>
+        <span className="tabular-nums text-muted-foreground/60">{characterCount} 字</span>
       </button>
       {expanded ? (
-        <div className="border-t border-border/70 px-3 py-2 text-xs leading-5 text-muted-foreground">
+        <div className="mt-1 border-l border-border/70 pl-3 text-xs leading-5 text-muted-foreground">
           <MarkdownMessage>{content}</MarkdownMessage>
         </div>
       ) : null}
@@ -1244,37 +1347,40 @@ function ToolTraceList({ messages }: { messages: ChatMessage[] }) {
   const hasRunningTool = messages.some((message) => message.toolStatus === "running");
   const errorCount = messages.filter((message) => message.toolStatus === "error").length;
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null);
-  const expanded = hasRunningTool || expandedOverride === true;
+  const expanded = expandedOverride === true;
   const latestMessage = messages[messages.length - 1];
   const statusText = hasRunningTool
-    ? "正在调用工具"
+    ? "正在使用工具"
     : errorCount > 0
       ? `${errorCount} 个调用失败`
-      : "调用完成";
+      : `${messages.length} 个工具`;
+  const latestPreview = latestMessage?.toolPreview?.trim();
 
   return (
-    <div className="mb-3 overflow-hidden rounded-lg border border-border/70 bg-muted/20">
+    <div className="my-2 max-w-[720px] text-xs text-muted-foreground/70">
       <button
         type="button"
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/70"
+        className={cn(
+          "flex min-h-7 w-full min-w-0 items-center gap-1.5 rounded-md px-1.5 text-left transition-colors hover:bg-muted/70 hover:text-foreground",
+          expanded && "bg-muted/50 text-foreground",
+        )}
         onClick={() => setExpandedOverride((current) => !(current ?? false))}
       >
         {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-        <Wrench className="h-3.5 w-3.5" />
-        <span className="font-medium text-foreground">调用过程</span>
-        <span>{messages.length} 步</span>
-        <span className="ml-auto">{statusText}</span>
+        <ToolStatusDot status={hasRunningTool ? "running" : errorCount > 0 ? "error" : "done"} />
+        <span className="shrink-0">{statusText}</span>
+        {latestMessage ? (
+          <span className="min-w-0 truncate text-muted-foreground/60">
+            {toolDisplayName(latestMessage.toolName)}
+            {latestPreview ? ` · ${latestPreview}` : ""}
+          </span>
+        ) : null}
       </button>
       {expanded ? (
-        <div className="space-y-1 border-t border-border/70 p-2">
+        <div className="mt-1 space-y-1 border-l border-border/70 pl-3">
           {messages.map((message) => (
             <ToolTraceItem key={message.id} message={message} />
           ))}
-        </div>
-      ) : latestMessage ? (
-        <div className="border-t border-border/70 px-3 py-2 text-xs leading-5 text-muted-foreground">
-          <span className="font-medium text-foreground">{toolDisplayName(latestMessage.toolName)}</span>
-          {latestMessage.toolPreview ? <span>：{latestMessage.toolPreview}</span> : null}
         </div>
       ) : null}
     </div>
@@ -1287,35 +1393,27 @@ function ToolTraceItem({ message }: { message: ChatMessage }) {
   const statusLabel = toolStatusLabel(message.toolStatus);
 
   return (
-    <div className="rounded-lg px-1 py-1 text-muted-foreground">
+    <div className="rounded-md py-1 text-muted-foreground">
       <button
         type="button"
-        className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-background/70"
+        className="group/tool flex w-full min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-xs transition-colors hover:bg-muted/60 hover:text-foreground"
         onClick={() => hasDetails && setExpanded((current) => !current)}
       >
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border/70 bg-background text-muted-foreground shadow-sm">
-          {hasDetails
-            ? expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />
-            : <Wrench className="h-3.5 w-3.5" />}
-        </span>
-        <Wrench className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate font-medium">{toolDisplayName(message.toolName)}</span>
-        <Badge className={cn(
-          "shrink-0 rounded-md border-border/70 bg-background text-[11px] text-muted-foreground",
-          message.toolStatus === "running" && "text-emerald-600 dark:text-emerald-300",
-          message.toolStatus === "error" && "border-destructive/20 bg-destructive/10 text-destructive",
-        )}>
-          {statusLabel}
-        </Badge>
+        {hasDetails
+          ? expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />
+          : <span className="h-3.5 w-3.5" />}
+        <ToolStatusDot status={message.toolStatus === "running" ? "running" : message.toolStatus === "error" ? "error" : "done"} />
+        <span className="min-w-0 flex-1 truncate">{toolDisplayName(message.toolName)}</span>
+        <span className="shrink-0 text-[11px] text-muted-foreground/60">{statusLabel}</span>
       </button>
       {message.toolPreview ? (
-        <p className="ml-12 mt-1 line-clamp-3 text-[13px] leading-6 text-foreground/85">{message.toolPreview}</p>
+        <p className="ml-10 mt-0.5 line-clamp-2 text-xs leading-5 text-muted-foreground/75">{message.toolPreview}</p>
       ) : null}
       {message.toolDuration ? (
-        <p className="ml-12 mt-1 text-[11px] text-muted-foreground">耗时 {formatToolDuration(message.toolDuration)}</p>
+        <p className="ml-10 mt-0.5 text-[11px] text-muted-foreground/55">耗时 {formatToolDuration(message.toolDuration)}</p>
       ) : null}
       {expanded && hasDetails ? (
-        <div className="ml-12 mt-3 space-y-3 border-l border-border pl-3">
+        <div className="ml-10 mt-2 space-y-2 border-l border-border/70 pl-3">
           {message.toolArgs ? <ToolPayload title="参数" content={message.toolArgs} /> : null}
           {message.toolResult ? <ToolPayload title="结果" content={message.toolResult} /> : null}
         </div>
@@ -1324,12 +1422,24 @@ function ToolTraceItem({ message }: { message: ChatMessage }) {
   );
 }
 
+function ToolStatusDot({ status }: { status: "done" | "error" | "running" }) {
+  return (
+    <span
+      className={cn(
+        "h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/35",
+        status === "running" && "animate-pulse bg-emerald-500/70",
+        status === "error" && "bg-destructive/80",
+      )}
+    />
+  );
+}
+
 function ToolPayload({ content, title }: { content: string; title: string }) {
   const formatted = formatJsonLikeText(content);
   return (
     <div>
-      <div className="mb-1 text-[11px] font-medium text-muted-foreground">{title}</div>
-      <pre className="max-h-64 overflow-auto rounded-md bg-background/80 p-3 text-xs leading-5 text-foreground">
+      <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/60">{title}</div>
+      <pre className="max-h-44 overflow-auto rounded-md border border-border/60 bg-muted/20 px-2 py-1.5 text-[11px] leading-5 text-muted-foreground">
         <code>{formatted}</code>
       </pre>
     </div>
@@ -1555,6 +1665,83 @@ function updateQueuedPrompts(
   };
 }
 
+function buildContextUsage(
+  session: HermesSession | null,
+  modelInfo: ModelInfoResponse | undefined,
+  runtimeUsage: ChatUsageStats | undefined,
+): ChatUsageStats | null {
+  const sessionUsage = usageStatsFromSession(session);
+  const contextMax = positiveUsageNumber(runtimeUsage?.contextMax) ?? modelContextMax(modelInfo);
+  const input = runtimeUsage && runtimeUsage.input > 0 ? runtimeUsage.input : sessionUsage.input;
+  const output = runtimeUsage && runtimeUsage.output > 0 ? runtimeUsage.output : sessionUsage.output;
+  const total = runtimeUsage && runtimeUsage.total > 0
+    ? runtimeUsage.total
+    : sessionUsage.total > 0
+      ? sessionUsage.total
+      : input + output;
+  const contextUsed = usageNumber(runtimeUsage?.contextUsed) ?? total;
+  const contextPercent = usageNumber(runtimeUsage?.contextPercent)
+    ?? (contextMax ? (contextUsed / contextMax) * 100 : undefined);
+
+  if (!contextMax && total <= 0) {
+    return null;
+  }
+
+  return {
+    contextMax,
+    contextPercent,
+    contextUsed,
+    input,
+    output,
+    total,
+  };
+}
+
+function usageStatsFromSession(session: HermesSession | null): ChatUsageStats {
+  if (!isRecord(session)) {
+    return {
+      input: 0,
+      output: 0,
+      total: 0,
+    };
+  }
+
+  const input = readNumber(session, "input_tokens") ?? readNumber(session, "input") ?? 0;
+  const output = readNumber(session, "output_tokens") ?? readNumber(session, "output") ?? 0;
+  const total = readNumber(session, "total_tokens") ?? readNumber(session, "tokens") ?? input + output;
+
+  return {
+    input,
+    output,
+    total,
+  };
+}
+
+function modelContextMax(modelInfo: ModelInfoResponse | undefined): number | undefined {
+  return positiveUsageNumber(modelInfo?.effective_context_length)
+    ?? positiveUsageNumber(modelInfo?.config_context_length)
+    ?? positiveUsageNumber(modelInfo?.auto_context_length);
+}
+
+function mergeUsageStats(current: ChatUsageStats | undefined, next: ChatUsageStats): ChatUsageStats {
+  const contextMax = positiveUsageNumber(next.contextMax) ?? current?.contextMax;
+  const contextUsed = usageNumber(next.contextUsed) ?? current?.contextUsed;
+  const input = next.input > 0 ? next.input : current?.input ?? 0;
+  const output = next.output > 0 ? next.output : current?.output ?? 0;
+  const total = next.total > 0 ? next.total : current?.total ?? input + output;
+  const contextPercent = usageNumber(next.contextPercent)
+    ?? (contextMax && contextUsed !== undefined ? (contextUsed / contextMax) * 100 : current?.contextPercent);
+
+  return {
+    contextMax,
+    contextPercent,
+    contextUsed,
+    input,
+    output,
+    total,
+  };
+}
+
 function mergeServerAndRuntimeMessages(
   serverMessages: ChatMessage[],
   runtimeMessages: ChatMessage[],
@@ -1669,6 +1856,53 @@ function streamEventReasoningText(event: HermesStreamEvent): string {
   }
 
   return typeof event.data === "string" ? normalizeEscapedText(event.data) : "";
+}
+
+function streamEventUsage(event: HermesStreamEvent): ChatUsageStats | null {
+  const data = streamEventRecord(event);
+  if (!data) {
+    return null;
+  }
+
+  const nestedUsage = isRecord(data.usage) ? data.usage : null;
+  const source = nestedUsage ?? data;
+  const tokenRecord = isRecord(source.tokens)
+    ? source.tokens
+    : isRecord(data.tokens)
+      ? data.tokens
+      : null;
+  const records = tokenRecord ? [source, tokenRecord] : [source];
+  const input = readFirstNumber(records, ["input", "input_tokens", "prompt_tokens"]);
+  const output = readFirstNumber(records, ["output", "output_tokens", "completion_tokens"]);
+  const total = readFirstNumber(records, ["total", "total_tokens", "tokens"]);
+  const contextMax = readFirstNumber(records, [
+    "context_max",
+    "context_length",
+    "context_limit",
+    "context_window",
+    "effective_context_length",
+    "model_context_length",
+  ]);
+  const contextUsed = readFirstNumber(records, ["context_used", "context_tokens", "used_context_tokens"]);
+  const contextPercent = readFirstNumber(records, ["context_percent", "context_percentage", "percentage"]);
+  const hasUsage = [input, output, total, contextMax, contextUsed, contextPercent].some((value) => value !== null);
+
+  if (!hasUsage) {
+    return null;
+  }
+
+  const normalizedInput = input ?? 0;
+  const normalizedOutput = output ?? 0;
+  const normalizedTotal = total ?? normalizedInput + normalizedOutput;
+
+  return {
+    contextMax: positiveUsageNumber(contextMax),
+    contextPercent: usageNumber(contextPercent),
+    contextUsed: usageNumber(contextUsed) ?? normalizedTotal,
+    input: normalizedInput,
+    output: normalizedOutput,
+    total: normalizedTotal,
+  };
 }
 
 function streamEventToolUpdate(event: HermesStreamEvent): ToolUpdate | null {
@@ -2213,12 +2447,69 @@ function toolDisplayName(name: string | undefined): string {
 function isCompletionMetadata(data: Record<PropertyKey, unknown>): boolean {
   return (
     "api_calls" in data
+    || "context_max" in data
+    || "context_percent" in data
+    || "context_used" in data
     || "duration_seconds" in data
     || "exit_reason" in data
     || "tokens" in data
     || "tool_trace" in data
     || "total_duration_seconds" in data
+    || "usage" in data
   );
+}
+
+function usageContextLabel(usage: ChatUsageStats): string {
+  if (usage.contextMax) {
+    return `${formatCompactTokenCount(usage.contextUsed ?? usage.total)}/${formatCompactTokenCount(usage.contextMax)}`;
+  }
+
+  return usage.total > 0 ? `${formatCompactTokenCount(usage.total)} tok` : "";
+}
+
+function formatCompactTokenCount(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0";
+  }
+
+  if (value >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(1)}M`;
+  }
+
+  if (value >= 1_000) {
+    return `${(value / 1_000).toFixed(1)}k`;
+  }
+
+  return String(Math.round(value));
+}
+
+function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(100, value));
+}
+
+function readFirstNumber(records: Record<PropertyKey, unknown>[], keys: string[]): number | null {
+  for (const record of records) {
+    for (const key of keys) {
+      const value = readNumber(record, key);
+      if (value !== null) {
+        return value;
+      }
+    }
+  }
+
+  return null;
+}
+
+function positiveUsageNumber(value: number | null | undefined): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function usageNumber(value: number | null | undefined): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
 function readNestedString(record: Record<PropertyKey, unknown>, path: string[]): string | null {
