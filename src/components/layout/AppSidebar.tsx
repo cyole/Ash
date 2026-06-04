@@ -1,8 +1,11 @@
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import { useEffect, useState } from "react";
 import type { LucideIcon } from "lucide-react";
-import { ArrowLeft, ArrowRight, Clock3, PackageSearch, PenLine, Search, Settings } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clock3, Moon, PackageSearch, PenLine, Search, Settings, Sun } from "lucide-react";
 import { NavLink, useNavigate } from "react-router";
 import { ChatSessionsSidebar } from "@/features/chat/components/ChatSessionsSidebar";
+import type { ThemeMode } from "@/features/settings/settings-store";
+import { useHermesSettings } from "@/features/settings/settings-store";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -31,7 +34,7 @@ export function AppSidebar({ maxWidth, minWidth, onResizePointerDown, width }: A
   const navigate = useNavigate();
 
   return (
-    <aside className="relative flex h-full w-[var(--hermes-sidebar-width)] shrink-0 select-none flex-col overflow-hidden bg-sidebar px-3 pb-3 pt-[calc(var(--hermes-titlebar-height)+8px)] text-muted-foreground">
+    <aside className="hermes-sidebar-surface relative flex h-full w-[var(--hermes-sidebar-width)] shrink-0 select-none flex-col overflow-hidden px-3 pb-3 pt-[calc(var(--hermes-titlebar-height)+8px)] text-muted-foreground">
       <button
         type="button"
         aria-label="调整侧边栏宽度"
@@ -68,8 +71,9 @@ export function AppSidebar({ maxWidth, minWidth, onResizePointerDown, width }: A
         <ChatSessionsSidebar />
       </div>
 
-      <div className="shrink-0 pt-2">
-        <SidebarLink item={settingsNav} />
+      <div className="flex shrink-0 items-center gap-1 pt-2">
+        <SidebarLink className="min-w-0 flex-1" item={settingsNav} />
+        <ThemeModeToggleButton />
       </div>
     </aside>
   );
@@ -97,7 +101,7 @@ function SidebarNavigationButton({
   );
 }
 
-function SidebarLink({ item }: { item: NavItem }) {
+function SidebarLink({ className, item }: { className?: string; item: NavItem }) {
   return (
     <NavLink
       to={item.to}
@@ -106,6 +110,7 @@ function SidebarLink({ item }: { item: NavItem }) {
         cn(
           "flex h-9 items-center gap-2.5 rounded-lg px-2 text-[13px] transition-colors hover:bg-black/[0.04] hover:text-foreground",
           isActive && "font-medium text-foreground",
+          className,
         )
       }
     >
@@ -113,4 +118,46 @@ function SidebarLink({ item }: { item: NavItem }) {
       <span>{item.label}</span>
     </NavLink>
   );
+}
+
+function ThemeModeToggleButton() {
+  const { settings, updateSettings } = useHermesSettings();
+  const dark = useEffectiveDarkMode(settings.themeMode);
+  const nextTheme = dark ? "light" : "dark";
+  const label = dark ? "切换到浅色" : "切换到深色";
+  const Icon = dark ? Sun : Moon;
+
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-black/[0.04] hover:text-foreground"
+      onClick={() => updateSettings({ themeMode: nextTheme })}
+    >
+      <Icon className="h-4 w-4" />
+    </button>
+  );
+}
+
+function useEffectiveDarkMode(themeMode: ThemeMode) {
+  const [systemDark, setSystemDark] = useState(getSystemPrefersDark);
+
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = () => setSystemDark(query.matches);
+
+    handleChange();
+    query.addEventListener("change", handleChange);
+
+    return () => {
+      query.removeEventListener("change", handleChange);
+    };
+  }, []);
+
+  return themeMode === "dark" || (themeMode === "system" && systemDark);
+}
+
+function getSystemPrefersDark() {
+  return typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches;
 }

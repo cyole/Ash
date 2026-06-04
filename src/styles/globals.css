@@ -180,6 +180,22 @@ select {
   font: inherit;
 }
 
+.hermes-sidebar-surface {
+  background: hsl(var(--sidebar) / 0.78);
+  backdrop-filter: blur(22px) saturate(1.16);
+  -webkit-backdrop-filter: blur(22px) saturate(1.16);
+}
+
+.dark .hermes-sidebar-surface {
+  background: hsl(var(--sidebar) / 0.72);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .hermes-sidebar-surface {
+    background: hsl(var(--sidebar) / 0.96);
+  }
+}
+
 .hermes-chat-input-shell {
   border: 1px solid hsl(var(--border)) !important;
   border-radius: 12px !important;
