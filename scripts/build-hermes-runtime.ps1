@@ -248,6 +248,13 @@ $env:UV_PYTHON_INSTALL_DIR = $uvPythonDir
 $env:UV_PYTHON_BIN_DIR = $uvBinDir
 $env:UV_CACHE_DIR = $cacheDir
 
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    & git config --global core.longpaths true
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to enable Git long paths for Windows runtime packaging."
+    }
+}
+
 $installerPath = Join-Path $BuildRoot "install.ps1"
 Invoke-WebRequest -Uri $InstallerUrl -OutFile $installerPath -UseBasicParsing
 

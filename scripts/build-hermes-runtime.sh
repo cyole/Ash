@@ -183,16 +183,54 @@ if [ -n "$expected_commit" ] && [ "$actual_commit" != "$expected_commit" ]; then
   exit 1
 fi
 
-python_runtime="$(
-  find "$uv_python_dir" -maxdepth 1 -type d -name 'cpython-3.11.*' \
-    | sort \
-    | tail -1
-)"
+resolve_python_runtime() {
+  local runtime=""
+  local venv_python="$install_dir/venv/bin/python"
 
+  runtime="$(
+    find "$uv_python_dir" -maxdepth 1 -type d -name 'cpython-3.11.*' \
+      | sort \
+      | tail -1
+  )"
+  if [ -n "$runtime" ] && [ -d "$runtime" ]; then
+    printf '%s\n' "$runtime"
+    return 0
+  fi
+
+  if [ ! -x "$venv_python" ]; then
+    venv_python="$install_dir/venv/bin/python3"
+  fi
+  if [ -x "$venv_python" ]; then
+    runtime="$("$venv_python" - <<'PY'
+import pathlib
+import sys
+
+base_prefix = pathlib.Path(sys.base_prefix).resolve()
+if base_prefix.exists():
+    print(base_prefix)
+PY
+)"
+    if [ -n "$runtime" ] && [ -d "$runtime" ]; then
+      printf '%s\n' "$runtime"
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
+python_runtime="$(resolve_python_runtime || true)"
 if [ -z "$python_runtime" ]; then
-  echo "Could not find uv-managed CPython runtime under $uv_python_dir" >&2
+  echo "Could not find CPython runtime under $uv_python_dir or from the staged venv base prefix." >&2
   exit 1
 fi
+python_version="$("$install_dir/venv/bin/python" - <<'PY'
+import sys
+
+print(".".join(str(part) for part in sys.version_info[:3]))
+PY
+)"
+echo "Using CPython runtime: $python_runtime"
 
 staged_agent="$stage_root/hermes-agent"
 cp -a "$install_dir" "$staged_agent"
@@ -254,7 +292,7 @@ ln -s "python" "$staged_agent/venv/bin/python3.11"
 cat > "$staged_agent/venv/pyvenv.cfg" <<EOF
 home = ../../python/$python_runtime_name/bin
 implementation = CPython
-version_info = 3.11.15
+version_info = $python_version
 include-system-site-packages = false
 EOF
 
