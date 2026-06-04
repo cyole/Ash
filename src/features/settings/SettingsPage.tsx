@@ -10,6 +10,7 @@ import {
   CircleAlert,
   Code2,
   Cpu,
+  FileText,
   Gauge,
   Loader2,
   Monitor,
@@ -59,6 +60,7 @@ import {
   getRuntimeStatus,
   isTauriRuntime,
   prepareRuntime,
+  revealRuntimeLogs,
   runDoctor,
   setupPortal,
   startDashboard,
@@ -67,7 +69,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { HermesStatus, ModelConfigStatus, RuntimeCommandResult } from "@/types/hermes";
 
-type RuntimeAction = "prepare" | "start" | "stop" | "status" | "doctor" | "portal";
+type RuntimeAction = "prepare" | "start" | "stop" | "status" | "doctor" | "portal" | "logs";
 type SettingsSectionId = "appearance" | "chat" | "model" | "runtime" | "advanced" | "about";
 
 interface SettingsSectionNav {
@@ -84,6 +86,7 @@ const actionLabels: Record<RuntimeAction, string> = {
   status: "检查 dashboard",
   doctor: "运行诊断",
   portal: "连接门户",
+  logs: "打开日志",
 };
 
 const runtimeModeLabels: Record<HermesStatus["mode"], string> = {
@@ -229,6 +232,8 @@ export function SettingsPage() {
           return runDoctor();
         case "portal":
           return setupPortal();
+        case "logs":
+          return revealRuntimeLogs();
       }
     },
     onSuccess: (result, action) => {
@@ -656,6 +661,14 @@ function RuntimeSection({
           >
             连接门户
           </Button>
+          <Button
+            onClick={() => onRunAction("logs")}
+            disabled={!tauriRuntime || busy}
+            variant="outline"
+          >
+            <FileText className="h-4 w-4" />
+            打开日志
+          </Button>
         </div>
         {!tauriRuntime ? (
           <p className="border-t border-border/70 px-4 py-3 text-sm text-muted-foreground">
@@ -676,6 +689,27 @@ function RuntimeSection({
               <CommandOutput result={lastResult} dashboardStatus={runtime?.dashboardStatus ?? null} />
             </div>
           )}
+        </div>
+      </SettingsGroup>
+
+      <SettingsGroup title="启动日志">
+        <SettingsRow
+          label="日志文件"
+          description={runtime?.logPath ?? "本地服务检查后会显示日志路径。"}
+          action={
+            <Button
+              onClick={() => onRunAction("logs")}
+              disabled={!tauriRuntime || busy}
+              variant="outline"
+              size="sm"
+            >
+              <FileText className="h-4 w-4" />
+              打开目录
+            </Button>
+          }
+        />
+        <div className="border-t border-border/70 p-4">
+          <LogPreview lines={runtime?.recentLogLines ?? []} />
         </div>
       </SettingsGroup>
     </div>
@@ -701,6 +735,7 @@ function AdvancedSection({
         <SettingsRow label="运行时根目录" description={runtime?.managedRoot ?? "检查中"} action={<ValuePill value="managedRoot" mono />} />
         <SettingsRow label="Hermes 主目录" description={runtime?.hermesHome ?? "检查中"} action={<ValuePill value="hermesHome" mono />} />
         <SettingsRow label="配置文件" description={runtime?.configPath ?? "检查中"} action={<ValuePill value="config" mono />} />
+        <SettingsRow label="日志文件" description={runtime?.logPath ?? "检查中"} action={<ValuePill value="desktop.log" mono />} />
         <SettingsRow label="Hermes CLI" description={runtime?.path ?? "未找到"} action={<ValuePill value="cli" mono />} />
         <SettingsRow label="Python" description={runtime?.pythonPath ?? "未找到"} action={<ValuePill value="python" mono />} />
         <SettingsRow label="Dashboard API" description={runtime?.apiUrl ?? "http://127.0.0.1:9120"} action={<ValuePill value="api" mono />} />
@@ -1241,6 +1276,24 @@ function CommandOutput({
           <pre className="max-h-40 overflow-auto whitespace-pre-wrap leading-5 text-zinc-300">{dashboardStatus}</pre>
         </>
       ) : null}
+    </div>
+  );
+}
+
+function LogPreview({ lines }: { lines: string[] }) {
+  if (lines.length === 0) {
+    return (
+      <div className="rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
+        还没有启动日志。准备或启动本地服务后会显示最近记录。
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-md border border-border bg-[#0a0a0b] p-3 text-xs text-zinc-100">
+      <pre className="max-h-56 overflow-auto whitespace-pre-wrap leading-5">
+        {lines.join("\n")}
+      </pre>
     </div>
   );
 }

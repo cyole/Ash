@@ -61,6 +61,7 @@ pub fn run() {
             commands::runtime::runtime_dashboard_stop,
             commands::runtime::runtime_dashboard_status,
             commands::runtime::runtime_dashboard_restart,
+            commands::runtime::runtime_reveal_logs,
             commands::runtime::runtime_connection,
             commands::runtime::runtime_dashboard_api,
             commands::runtime::runtime_doctor,

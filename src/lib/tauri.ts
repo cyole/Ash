@@ -97,6 +97,8 @@ export async function getRuntimeStatus(): Promise<HermesStatus> {
       configPath: "打开 Tauri 应用后可查看本地引擎配置路径。",
       legacyConfigPath: null,
       legacyConfigFound: false,
+      logPath: "打开 Tauri 应用后可查看日志路径。",
+      recentLogLines: [],
       dashboardStatus: null,
       backendPid: null,
     };
@@ -131,6 +133,10 @@ export async function setupPortal(): Promise<RuntimeCommandResult> {
 
 export async function restartDashboard(): Promise<RuntimeCommandResult> {
   return invoke<RuntimeCommandResult>("runtime_dashboard_restart");
+}
+
+export async function revealRuntimeLogs(): Promise<RuntimeCommandResult> {
+  return invoke<RuntimeCommandResult>("runtime_reveal_logs");
 }
 
 export async function getRuntimeConnection(): Promise<RuntimeConnection> {

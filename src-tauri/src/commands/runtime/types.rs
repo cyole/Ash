@@ -22,6 +22,8 @@ pub struct RuntimeStatus {
     pub(crate) config_path: String,
     pub(crate) legacy_config_path: Option<String>,
     pub(crate) legacy_config_found: bool,
+    pub(crate) log_path: String,
+    pub(crate) recent_log_lines: Vec<String>,
     pub(crate) dashboard_status: Option<String>,
     pub(crate) backend_pid: Option<u32>,
 }

@@ -16,6 +16,10 @@ impl RuntimePaths {
     pub(crate) fn web_dist_path(&self) -> PathBuf {
         self.root.join("web-dist")
     }
+
+    pub(crate) fn desktop_log_path(&self) -> PathBuf {
+        self.hermes_home.join("logs").join("desktop.log")
+    }
 }
 
 pub(crate) fn runtime_paths(app: &AppHandle) -> RuntimePaths {

@@ -26,6 +26,8 @@ export interface HermesStatus {
   configPath: string;
   legacyConfigPath: string | null;
   legacyConfigFound: boolean;
+  logPath: string;
+  recentLogLines: string[];
   dashboardStatus: string | null;
   backendPid: number | null;
 }

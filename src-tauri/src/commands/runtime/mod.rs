@@ -89,6 +89,13 @@ pub async fn runtime_dashboard_restart(app: AppHandle) -> Result<RuntimeCommandR
 }
 
 #[tauri::command]
+pub async fn runtime_reveal_logs(app: AppHandle) -> Result<RuntimeCommandResult, String> {
+    tauri::async_runtime::spawn_blocking(move || service::runtime_reveal_logs_impl(app))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 pub async fn model_config_status(app: AppHandle) -> Result<ModelConfigStatus, String> {
     tauri::async_runtime::spawn_blocking(move || models::model_config_status_impl(app))
         .await

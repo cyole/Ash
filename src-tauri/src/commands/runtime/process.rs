@@ -1,11 +1,14 @@
 use serde_json::Value;
 use std::{
     env,
+    fs::{self, File, OpenOptions},
+    io::{BufRead, BufReader, Read, Seek, SeekFrom, Write},
     net::TcpListener,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
+    sync::{LazyLock, Mutex},
     thread,
-    time::Instant,
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 use super::constants::{
@@ -22,6 +25,9 @@ pub(crate) struct DashboardLaunch {
     pub(crate) token: String,
     pub(crate) ws_url: String,
 }
+
+static LOG_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+const LOG_TAIL_BYTES: u64 = 64 * 1024;
 
 pub(crate) fn read_version(path: &Path, paths: &RuntimePaths) -> Option<String> {
     let output = run_hermes(path, paths, &["--version"]).ok()?;
@@ -201,7 +207,26 @@ pub(crate) fn run_hermes(
         .env("PATH", enhanced_path(paths));
     command.env_remove("PYTHONHOME");
 
-    run_command(&mut command)
+    let result = run_command(&mut command)?;
+    let log_path = paths.desktop_log_path();
+    append_runtime_log(
+        &log_path,
+        "command",
+        format!(
+            "hermes {} -> success={} code={:?}",
+            args.join(" "),
+            result.success,
+            result.code
+        ),
+    );
+    if !result.stdout.trim().is_empty() {
+        append_runtime_log(&log_path, "command:stdout", &result.stdout);
+    }
+    if !result.stderr.trim().is_empty() {
+        append_runtime_log(&log_path, "command:stderr", &result.stderr);
+    }
+
+    Ok(result)
 }
 
 pub(crate) fn launch_dashboard(paths: &RuntimePaths) -> Result<DashboardLaunch, String> {
@@ -211,13 +236,24 @@ pub(crate) fn launch_dashboard(paths: &RuntimePaths) -> Result<DashboardLaunch, 
     let ws_url = local_dashboard_ws_url(port, &token);
 
     let (backend_path, mut command) = dashboard_command(paths, port, &token)?;
-    let child = command.spawn().map_err(|error| {
+    let log_path = paths.desktop_log_path();
+    append_runtime_log(
+        &log_path,
+        "desktop",
+        format!(
+            "Launching Hermes dashboard on {api_url} via {}",
+            backend_path.to_string_lossy()
+        ),
+    );
+
+    let mut child = command.spawn().map_err(|error| {
         format!(
             "Hermes dashboard 启动失败（{}）：{}",
             backend_path.to_string_lossy(),
             error
         )
     })?;
+    pipe_child_output(&mut child, &log_path);
 
     let mut launch = DashboardLaunch {
         api_url,
@@ -226,7 +262,12 @@ pub(crate) fn launch_dashboard(paths: &RuntimePaths) -> Result<DashboardLaunch, 
         token,
         ws_url,
     };
-    wait_for_dashboard(&mut launch)?;
+    wait_for_dashboard(&mut launch, &log_path)?;
+    append_runtime_log(
+        &log_path,
+        "desktop",
+        format!("Hermes dashboard is healthy at {}", launch.api_url),
+    );
     Ok(launch)
 }
 
@@ -282,13 +323,13 @@ fn dashboard_command(
         .env("PATH", enhanced_path(paths))
         .env_remove("PYTHONHOME")
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
 
     Ok((backend_path, command))
 }
 
-fn wait_for_dashboard(launch: &mut DashboardLaunch) -> Result<(), String> {
+fn wait_for_dashboard(launch: &mut DashboardLaunch, log_path: &Path) -> Result<(), String> {
     let started = Instant::now();
 
     loop {
@@ -297,6 +338,11 @@ fn wait_for_dashboard(launch: &mut DashboardLaunch) -> Result<(), String> {
         }
 
         if let Some(status) = launch.child.try_wait().map_err(|error| error.to_string())? {
+            append_runtime_log(
+                log_path,
+                "desktop",
+                format!("Hermes dashboard exited before readiness: {status}"),
+            );
             return Err(format!(
                 "Hermes dashboard 过早退出：{}。",
                 status
@@ -309,6 +355,14 @@ fn wait_for_dashboard(launch: &mut DashboardLaunch) -> Result<(), String> {
         if started.elapsed() >= DASHBOARD_START_TIMEOUT {
             let _ = launch.child.kill();
             let _ = launch.child.wait();
+            append_runtime_log(
+                log_path,
+                "desktop",
+                format!(
+                    "Hermes dashboard did not become healthy within {} seconds",
+                    DASHBOARD_START_TIMEOUT.as_secs()
+                ),
+            );
             return Err(format!(
                 "Hermes dashboard 在 {} 秒内没有就绪。",
                 DASHBOARD_START_TIMEOUT.as_secs()
@@ -317,6 +371,105 @@ fn wait_for_dashboard(launch: &mut DashboardLaunch) -> Result<(), String> {
 
         thread::sleep(HEALTH_CHECK_TIMEOUT);
     }
+}
+
+fn pipe_child_output(child: &mut Child, log_path: &Path) {
+    if let Some(stdout) = child.stdout.take() {
+        spawn_log_reader(stdout, log_path.to_path_buf(), "dashboard:stdout");
+    }
+
+    if let Some(stderr) = child.stderr.take() {
+        spawn_log_reader(stderr, log_path.to_path_buf(), "dashboard:stderr");
+    }
+}
+
+fn spawn_log_reader<R>(reader: R, log_path: PathBuf, source: &'static str)
+where
+    R: Read + Send + 'static,
+{
+    thread::spawn(move || {
+        let reader = BufReader::new(reader);
+        for line in reader.lines() {
+            match line {
+                Ok(line) => append_runtime_log(&log_path, source, line),
+                Err(error) => {
+                    append_runtime_log(
+                        &log_path,
+                        "desktop",
+                        format!("读取 Hermes dashboard 输出失败：{error}"),
+                    );
+                    break;
+                }
+            }
+        }
+    });
+}
+
+pub(crate) fn append_runtime_log(log_path: &Path, source: &str, text: impl AsRef<str>) {
+    let text = text.as_ref().trim();
+    if text.is_empty() {
+        return;
+    }
+
+    let Ok(_guard) = LOG_LOCK.lock() else {
+        return;
+    };
+
+    if let Some(parent) = log_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+
+    let Ok(mut file) = OpenOptions::new().create(true).append(true).open(log_path) else {
+        return;
+    };
+
+    let timestamp = runtime_log_timestamp();
+    for line in text
+        .lines()
+        .map(str::trim_end)
+        .filter(|line| !line.is_empty())
+    {
+        let _ = writeln!(file, "[{timestamp}] [{source}] {line}");
+    }
+}
+
+pub(crate) fn tail_runtime_log(log_path: &Path, max_lines: usize) -> Result<Vec<String>, String> {
+    if max_lines == 0 || !log_path.is_file() {
+        return Ok(Vec::new());
+    }
+
+    let mut file = File::open(log_path).map_err(|error| error.to_string())?;
+    let size = file.metadata().map_err(|error| error.to_string())?.len();
+    let start = size.saturating_sub(LOG_TAIL_BYTES);
+    file.seek(SeekFrom::Start(start))
+        .map_err(|error| error.to_string())?;
+
+    let mut buffer = Vec::new();
+    file.read_to_end(&mut buffer)
+        .map_err(|error| error.to_string())?;
+    let mut text = String::from_utf8_lossy(&buffer).to_string();
+
+    if start > 0 {
+        if let Some((_, remainder)) = text.split_once('\n') {
+            text = remainder.to_string();
+        }
+    }
+
+    let mut lines = text
+        .lines()
+        .rev()
+        .take(max_lines)
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    lines.reverse();
+    Ok(lines)
+}
+
+fn runtime_log_timestamp() -> String {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs().to_string())
+        .unwrap_or_else(|_| "0".to_string())
 }
 
 fn run_command(command: &mut Command) -> Result<RuntimeCommandResult, String> {
@@ -413,7 +566,11 @@ impl ChildTimeoutExt for Child {
         let started = Instant::now();
 
         loop {
-            if self.try_wait().map_err(|error| error.to_string())?.is_some() {
+            if self
+                .try_wait()
+                .map_err(|error| error.to_string())?
+                .is_some()
+            {
                 return self.wait_with_output().map_err(|error| error.to_string());
             }
 
