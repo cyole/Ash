@@ -1,6 +1,6 @@
 [package]
 name = "ash"
-version = "0.1.0"
+version = "0.0.1"
 description = "Ash is a local-first desktop client for Hermes Agent"
 authors = ["Ash Contributors"]
 edition = "2021"
