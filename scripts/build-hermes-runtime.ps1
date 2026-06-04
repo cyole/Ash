@@ -264,6 +264,14 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to enable Git long paths for Windows runtime packaging."
     }
+    & git config --global core.autocrlf false
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to disable Git autocrlf for Windows runtime packaging."
+    }
+    & git config --global core.eol lf
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to set Git line endings for Windows runtime packaging."
+    }
 }
 
 $installerPath = Join-Path $BuildRoot "install.ps1"
