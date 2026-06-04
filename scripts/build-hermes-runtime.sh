@@ -3,9 +3,11 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 out_dir="${HERMES_RUNTIME_OUT_DIR:-$repo_root/src-tauri/resources/hermes-runtime}"
-hermes_ref="${HERMES_AGENT_REF:-v2026.5.16}"
-expected_commit="${HERMES_AGENT_COMMIT:-}"
-installer_ref="${HERMES_INSTALLER_REF:-$hermes_ref}"
+expected_commit="${HERMES_AGENT_COMMIT:-343c54e35bfe8682dcf597aea1f0ea5278864156}"
+# The upstream installer uses --branch during git clone/update; the explicit
+# --commit below pins the final checkout to the official desktop version.
+hermes_ref="${HERMES_AGENT_REF:-main}"
+installer_ref="${HERMES_INSTALLER_REF:-$expected_commit}"
 installer_url="${HERMES_INSTALLER_URL:-https://raw.githubusercontent.com/NousResearch/hermes-agent/${installer_ref}/scripts/install.sh}"
 keep_build="${HERMES_RUNTIME_KEEP_BUILD:-0}"
 include_node_tools="${HERMES_RUNTIME_INCLUDE_NODE_TOOLS:-0}"
@@ -158,12 +160,19 @@ echo "If it prints ~/.local/bin/hermes, that path is inside the temporary HOME a
 echo ""
 
 curl -fsSL "$installer_url" -o "$build_root/install.sh"
-bash "$build_root/install.sh" \
-  --branch "$hermes_ref" \
-  --skip-setup \
-  --skip-browser \
-  --hermes-home "$hermes_home" \
+install_args=(
+  --branch "$hermes_ref"
+  --skip-setup
+  --skip-browser
+  --hermes-home "$hermes_home"
   --dir "$install_dir"
+)
+
+if [ -n "$expected_commit" ]; then
+  install_args+=(--commit "$expected_commit")
+fi
+
+bash "$build_root/install.sh" "${install_args[@]}"
 
 actual_commit="$(cd "$install_dir" && git rev-parse HEAD)"
 if [ -n "$expected_commit" ] && [ "$actual_commit" != "$expected_commit" ]; then

@@ -19,10 +19,10 @@ export function StatusBar() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const selectedSessionId = searchParams.get(chatSessionSearchParam);
-  const { apiKey, apiReady, apiUrl, client } = useHermesApi();
+  const { apiReady, apiUrl, client, sessionToken } = useHermesApi();
   const sessions = useQuery({
     enabled: apiReady && location.pathname === "/chat" && Boolean(selectedSessionId),
-    queryKey: hermesQueryKeys.sessions(apiUrl, Boolean(apiKey)),
+    queryKey: hermesQueryKeys.sessions(apiUrl, Boolean(sessionToken)),
     queryFn: () => client.listSessions(),
   });
   const selectedSession = sessions.data?.find((session) => session.id === selectedSessionId);

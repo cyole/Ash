@@ -12,10 +12,10 @@ export function ChatSessionsSidebar() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const selectedSessionId = searchParams.get(chatSessionSearchParam);
-  const { apiKey, apiReady, apiUrl, client } = useHermesApi();
+  const { apiReady, apiUrl, client, sessionToken } = useHermesApi();
   const sessions = useQuery({
     enabled: apiReady,
-    queryKey: hermesQueryKeys.sessions(apiUrl, Boolean(apiKey)),
+    queryKey: hermesQueryKeys.sessions(apiUrl, Boolean(sessionToken)),
     queryFn: () => client.listSessions(),
   });
 

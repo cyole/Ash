@@ -54,15 +54,15 @@ import type {
 import { errorMessage } from "@/lib/errors";
 import { hermesQueryKeys } from "@/lib/hermes/queries";
 import {
-  checkGateway,
+  checkDashboard,
   getModelConfigStatus,
   getRuntimeStatus,
   isTauriRuntime,
   prepareRuntime,
   runDoctor,
   setupPortal,
-  startGateway,
-  stopGateway,
+  startDashboard,
+  stopDashboard,
 } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import type { HermesStatus, ModelConfigStatus, RuntimeCommandResult } from "@/types/hermes";
@@ -79,9 +79,9 @@ interface SettingsSectionNav {
 
 const actionLabels: Record<RuntimeAction, string> = {
   prepare: "准备本地引擎",
-  start: "启动服务",
-  stop: "停止服务",
-  status: "检查服务",
+  start: "启动 dashboard",
+  stop: "停止 dashboard",
+  status: "检查 dashboard",
   doctor: "运行诊断",
   portal: "连接门户",
 };
@@ -91,6 +91,7 @@ const runtimeModeLabels: Record<HermesStatus["mode"], string> = {
   "local-app": "桌面托管",
   "local-existing": "本机已有",
   "local-managed": "应用托管",
+  "local-managed-dashboard": "内置 Dashboard",
   remote: "远程服务",
 };
 
@@ -219,11 +220,11 @@ export function SettingsPage() {
         case "prepare":
           return prepareRuntime();
         case "start":
-          return startGateway();
+          return startDashboard();
         case "stop":
-          return stopGateway();
+          return stopDashboard();
         case "status":
-          return checkGateway();
+          return checkDashboard();
         case "doctor":
           return runDoctor();
         case "portal":
@@ -302,7 +303,7 @@ export function SettingsPage() {
           <RuntimeBadge
             installed={runtime?.installed}
             running={runtime?.running}
-            gatewayRunning={runtime?.gatewayRunning}
+            backgroundGatewayRunning={runtime?.backgroundGatewayRunning}
           />
         </div>
       </aside>
@@ -582,13 +583,13 @@ function RuntimeSection({
             <RuntimeBadge
               installed={runtime?.installed}
               running={runtime?.running}
-              gatewayRunning={runtime?.gatewayRunning}
+              backgroundGatewayRunning={runtime?.backgroundGatewayRunning}
             />
           }
         />
         <SettingsRow
           label="运行模式"
-          description="桌面应用会在需要时准备托管运行时，并在退出前停止服务。"
+          description="桌面应用会在需要时准备内置运行时，并启动官方 dashboard TUI 后端。"
           action={<ValuePill value={runtime ? runtimeModeLabels[runtime.mode] : "检查中"} />}
         />
         <SettingsRow
@@ -601,11 +602,11 @@ function RuntimeSection({
           }
         />
         <SettingsRow
-          label="本地 API 认证"
-          description="聊天请求会带上桌面运行时提供的本地 API Key。"
+          label="Dashboard Token"
+          description="聊天请求会带上 dashboard 本次进程生成的 session token。"
           action={
-            <StatusPill tone={runtime?.apiKeyConfigured ? "success" : "warning"}>
-              {runtime?.apiKeyConfigured ? "已配置" : "需要设置"}
+            <StatusPill tone={runtime?.sessionTokenConfigured ? "success" : "warning"}>
+              {runtime?.sessionTokenConfigured ? "已生成" : "未生成"}
             </StatusPill>
           }
         />
@@ -630,7 +631,7 @@ function RuntimeSection({
             variant="outline"
           >
             {runtime?.running ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-            {runtime?.running ? "停止服务" : "启动服务"}
+            {runtime?.running ? "停止 dashboard" : "启动 dashboard"}
           </Button>
           <Button
             onClick={() => onRunAction("status")}
@@ -672,7 +673,7 @@ function RuntimeSection({
             </div>
           ) : (
             <div className="mt-3">
-              <CommandOutput result={lastResult} gatewayStatus={runtime?.gatewayStatus ?? null} />
+              <CommandOutput result={lastResult} dashboardStatus={runtime?.dashboardStatus ?? null} />
             </div>
           )}
         </div>
@@ -701,13 +702,15 @@ function AdvancedSection({
         <SettingsRow label="Hermes 主目录" description={runtime?.hermesHome ?? "检查中"} action={<ValuePill value="hermesHome" mono />} />
         <SettingsRow label="配置文件" description={runtime?.configPath ?? "检查中"} action={<ValuePill value="config" mono />} />
         <SettingsRow label="Hermes CLI" description={runtime?.path ?? "未找到"} action={<ValuePill value="cli" mono />} />
-        <SettingsRow label="本地 API" description={runtime?.apiUrl ?? "http://127.0.0.1:8642"} action={<ValuePill value="api" mono />} />
+        <SettingsRow label="Python" description={runtime?.pythonPath ?? "未找到"} action={<ValuePill value="python" mono />} />
+        <SettingsRow label="Dashboard API" description={runtime?.apiUrl ?? "http://127.0.0.1:9120"} action={<ValuePill value="api" mono />} />
+        <SettingsRow label="TUI WebSocket" description={runtime?.wsUrl ?? "dashboard 启动后显示"} action={<ValuePill value="ws" mono />} />
       </SettingsGroup>
 
       <SettingsGroup title="开发者工具">
         <SettingsRow
           label="调试菜单"
-          description="用于查看运行时命令输出、网关状态和本地路径。"
+          description="用于查看运行时命令输出、dashboard 状态和本地路径。"
           action={
             <StatusPill tone={developerToolsEnabled ? "success" : "neutral"}>
               {developerToolsEnabled ? "已启用" : "未启用"}
@@ -722,7 +725,7 @@ function AdvancedSection({
             </div>
           ) : (
             <div className="mt-3">
-              <CommandOutput result={lastResult} gatewayStatus={runtime?.gatewayStatus ?? null} />
+              <CommandOutput result={lastResult} dashboardStatus={runtime?.dashboardStatus ?? null} />
             </div>
           )}
         </div>
@@ -1105,11 +1108,11 @@ function MermaidPreviewPanel() {
 }
 
 function RuntimeBadge({
-  gatewayRunning,
+  backgroundGatewayRunning,
   installed,
   running,
 }: {
-  gatewayRunning?: boolean;
+  backgroundGatewayRunning?: boolean;
   installed?: boolean;
   running?: boolean;
 }) {
@@ -1126,7 +1129,7 @@ function RuntimeBadge({
     return (
       <Badge className="border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300">
         <CircleAlert className="mr-1 h-3 w-3" />
-        {gatewayRunning ? "API 已暂停" : "已停止"}
+        {backgroundGatewayRunning ? "Dashboard 已停止" : "已停止"}
       </Badge>
     );
   }
@@ -1213,13 +1216,13 @@ function CommandHeader({
 }
 
 function CommandOutput({
-  gatewayStatus,
+  dashboardStatus,
   result,
 }: {
-  gatewayStatus: string | null;
+  dashboardStatus: string | null;
   result: RuntimeCommandResult | null;
 }) {
-  if (!result && !gatewayStatus) {
+  if (!result && !dashboardStatus) {
     return (
       <div className="rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
         还没有运行任何操作。
@@ -1227,15 +1230,15 @@ function CommandOutput({
     );
   }
 
-  const output = result ? [result.stdout, result.stderr].filter(Boolean).join("\n") : gatewayStatus;
+  const output = result ? [result.stdout, result.stderr].filter(Boolean).join("\n") : dashboardStatus;
 
   return (
     <div className="rounded-md border border-border bg-[#0a0a0b] p-3 text-xs text-zinc-100">
       <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap leading-5">{output || "没有输出。"}</pre>
-      {gatewayStatus && result ? (
+      {dashboardStatus && result ? (
         <>
           <Separator className="my-3 bg-zinc-800" />
-          <pre className="max-h-40 overflow-auto whitespace-pre-wrap leading-5 text-zinc-300">{gatewayStatus}</pre>
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap leading-5 text-zinc-300">{dashboardStatus}</pre>
         </>
       ) : null}
     </div>
@@ -1251,8 +1254,8 @@ function runtimeSummary(runtime?: HermesStatus) {
     return "本地服务已就绪并运行中。";
   }
 
-  if (runtime.gatewayRunning) {
-    return "网关运行中，本地 API 暂未完全就绪。";
+  if (runtime.backgroundGatewayRunning) {
+    return "后台 gateway 正在运行，dashboard 暂未就绪。";
   }
 
   if (runtime.installed) {

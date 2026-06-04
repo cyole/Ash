@@ -56,11 +56,13 @@ export interface HermesUploadedFile {
 }
 
 export interface SessionChatInput {
-  sessionId: string;
+  sessionId?: string;
   message: string;
   model?: string;
   files?: string[];
   signal?: AbortSignal;
+  title?: string;
+  transientSessionId?: string;
 }
 
 export interface StartRunInput {

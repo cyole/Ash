@@ -1,5 +1,4 @@
 mod bundle;
-mod chat_stream;
 mod config;
 mod constants;
 mod extensions;
@@ -11,8 +10,9 @@ mod types;
 
 use tauri::AppHandle;
 use types::{
-    HermesChatStreamInput, HermesExtensionsCatalog, ModelConfigStatus, OpenAiModelConfigInput,
-    OpenAiModelsInput, OpenAiModelsResult, RuntimeApiAuth, RuntimeCommandResult, RuntimeStatus,
+    HermesExtensionsCatalog, ModelConfigStatus, OpenAiModelConfigInput, OpenAiModelsInput,
+    OpenAiModelsResult, RuntimeCommandResult, RuntimeConnection, RuntimeDashboardApiInput,
+    RuntimeStatus,
 };
 
 #[tauri::command]
@@ -30,29 +30,39 @@ pub async fn runtime_prepare(app: AppHandle) -> Result<RuntimeCommandResult, Str
 }
 
 #[tauri::command]
-pub async fn runtime_gateway_start(app: AppHandle) -> Result<RuntimeCommandResult, String> {
-    tauri::async_runtime::spawn_blocking(move || service::runtime_gateway_start_impl(app))
+pub async fn runtime_dashboard_start(app: AppHandle) -> Result<RuntimeCommandResult, String> {
+    tauri::async_runtime::spawn_blocking(move || service::runtime_dashboard_start_impl(app))
         .await
         .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-pub async fn runtime_gateway_stop(app: AppHandle) -> Result<RuntimeCommandResult, String> {
-    tauri::async_runtime::spawn_blocking(move || service::runtime_gateway_stop_impl(app))
+pub async fn runtime_dashboard_stop(app: AppHandle) -> Result<RuntimeCommandResult, String> {
+    tauri::async_runtime::spawn_blocking(move || service::runtime_dashboard_stop_impl(app))
         .await
         .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-pub async fn runtime_gateway_status(app: AppHandle) -> Result<RuntimeCommandResult, String> {
-    tauri::async_runtime::spawn_blocking(move || service::runtime_gateway_status_impl(app))
+pub async fn runtime_dashboard_status(app: AppHandle) -> Result<RuntimeCommandResult, String> {
+    tauri::async_runtime::spawn_blocking(move || service::runtime_dashboard_status_impl(app))
         .await
         .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-pub async fn runtime_api_auth(app: AppHandle) -> Result<RuntimeApiAuth, String> {
-    tauri::async_runtime::spawn_blocking(move || service::runtime_api_auth_impl(app))
+pub async fn runtime_connection(app: AppHandle) -> Result<RuntimeConnection, String> {
+    tauri::async_runtime::spawn_blocking(move || service::runtime_connection_impl(app))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn runtime_dashboard_api(
+    app: AppHandle,
+    input: RuntimeDashboardApiInput,
+) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || service::runtime_dashboard_api_impl(app, input))
         .await
         .map_err(|error| error.to_string())?
 }
@@ -72,8 +82,8 @@ pub async fn runtime_setup_portal(app: AppHandle) -> Result<RuntimeCommandResult
 }
 
 #[tauri::command]
-pub async fn runtime_gateway_restart(app: AppHandle) -> Result<RuntimeCommandResult, String> {
-    tauri::async_runtime::spawn_blocking(move || service::runtime_gateway_restart_impl(app))
+pub async fn runtime_dashboard_restart(app: AppHandle) -> Result<RuntimeCommandResult, String> {
+    tauri::async_runtime::spawn_blocking(move || service::runtime_dashboard_restart_impl(app))
         .await
         .map_err(|error| error.to_string())?
 }
@@ -107,16 +117,6 @@ pub async fn model_config_fetch_openai_models(
 #[tauri::command]
 pub async fn runtime_extensions_catalog(app: AppHandle) -> Result<HermesExtensionsCatalog, String> {
     tauri::async_runtime::spawn_blocking(move || extensions::runtime_extensions_catalog_impl(app))
-        .await
-        .map_err(|error| error.to_string())?
-}
-
-#[tauri::command]
-pub async fn hermes_chat_stream(
-    app: AppHandle,
-    input: HermesChatStreamInput,
-) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || chat_stream::hermes_chat_stream_impl(app, input))
         .await
         .map_err(|error| error.to_string())?
 }

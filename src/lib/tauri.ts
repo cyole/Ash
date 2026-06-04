@@ -1,6 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { errorMessage } from "@/lib/errors";
+
 import type { HermesStreamEvent, SessionChatInput } from "@/lib/hermes/types";
 import type {
   HermesExtensionsCatalog,
@@ -8,14 +7,47 @@ import type {
   ModelConfigStatus,
   OpenAICompatibleModelConfig,
   OpenAIModelsResult,
-  RuntimeApiAuth,
   RuntimeCommandResult,
+  RuntimeConnection,
+  RuntimeDashboardApiInput,
 } from "@/types/hermes";
 
 export interface AppSettingsLoadResult {
   path: string;
   settings: Record<string, unknown> | null;
 }
+
+export interface HermesTuiSession {
+  messageCount: number;
+  messages: unknown[];
+  sessionId: string;
+  storedSessionId: string;
+}
+
+interface TuiRpcEvent {
+  payload: unknown;
+  sessionId: string | null;
+  type: string;
+}
+
+interface JsonRpcResponse<T> {
+  error?: {
+    code?: number;
+    message?: string;
+  };
+  id?: number;
+  result?: T;
+}
+
+interface TuiSessionResult {
+  message_count?: number;
+  messages?: unknown[];
+  session_id?: string;
+  stored_session_id?: string;
+}
+
+const defaultDashboardUrl = "http://127.0.0.1:9120";
+const defaultDashboardWsUrl = "ws://127.0.0.1:9120/api/ws";
 
 export function isTauriRuntime() {
   return "__TAURI_INTERNALS__" in window;
@@ -48,12 +80,15 @@ export async function getRuntimeStatus(): Promise<HermesStatus> {
     return {
       installed: false,
       running: false,
-      gatewayRunning: false,
-      apiKeyConfigured: false,
+      dashboardRunning: false,
+      backgroundGatewayRunning: false,
+      sessionTokenConfigured: false,
       path: null,
+      pythonPath: null,
       version: null,
       mode: "browser-preview",
-      apiUrl: "http://127.0.0.1:8642",
+      apiUrl: defaultDashboardUrl,
+      wsUrl: null,
       installSource: "browser-preview",
       bundledRuntimeArchive: "打开 Tauri 应用后可查看内置运行时路径。",
       bundledRuntimeFound: false,
@@ -62,7 +97,8 @@ export async function getRuntimeStatus(): Promise<HermesStatus> {
       configPath: "打开 Tauri 应用后可查看本地引擎配置路径。",
       legacyConfigPath: null,
       legacyConfigFound: false,
-      gatewayStatus: null,
+      dashboardStatus: null,
+      backendPid: null,
     };
   }
 
@@ -73,16 +109,16 @@ export async function prepareRuntime(): Promise<RuntimeCommandResult> {
   return invoke<RuntimeCommandResult>("runtime_prepare");
 }
 
-export async function startGateway(): Promise<RuntimeCommandResult> {
-  return invoke<RuntimeCommandResult>("runtime_gateway_start");
+export async function startDashboard(): Promise<RuntimeCommandResult> {
+  return invoke<RuntimeCommandResult>("runtime_dashboard_start");
 }
 
-export async function stopGateway(): Promise<RuntimeCommandResult> {
-  return invoke<RuntimeCommandResult>("runtime_gateway_stop");
+export async function stopDashboard(): Promise<RuntimeCommandResult> {
+  return invoke<RuntimeCommandResult>("runtime_dashboard_stop");
 }
 
-export async function checkGateway(): Promise<RuntimeCommandResult> {
-  return invoke<RuntimeCommandResult>("runtime_gateway_status");
+export async function checkDashboard(): Promise<RuntimeCommandResult> {
+  return invoke<RuntimeCommandResult>("runtime_dashboard_status");
 }
 
 export async function runDoctor(): Promise<RuntimeCommandResult> {
@@ -93,19 +129,28 @@ export async function setupPortal(): Promise<RuntimeCommandResult> {
   return invoke<RuntimeCommandResult>("runtime_setup_portal");
 }
 
-export async function restartGateway(): Promise<RuntimeCommandResult> {
-  return invoke<RuntimeCommandResult>("runtime_gateway_restart");
+export async function restartDashboard(): Promise<RuntimeCommandResult> {
+  return invoke<RuntimeCommandResult>("runtime_dashboard_restart");
 }
 
-export async function getRuntimeApiAuth(): Promise<RuntimeApiAuth> {
+export async function getRuntimeConnection(): Promise<RuntimeConnection> {
   if (!isTauriRuntime()) {
     return {
-      apiUrl: "http://127.0.0.1:8642",
-      apiKey: null,
+      apiUrl: defaultDashboardUrl,
+      sessionToken: null,
+      wsUrl: defaultDashboardWsUrl,
     };
   }
 
-  return invoke<RuntimeApiAuth>("runtime_api_auth");
+  return invoke<RuntimeConnection>("runtime_connection");
+}
+
+export async function dashboardApi<T>(input: RuntimeDashboardApiInput): Promise<T> {
+  if (!isTauriRuntime()) {
+    throw new Error("Hermes dashboard API 代理仅在 Tauri 桌面应用中可用。");
+  }
+
+  return invoke<T>("runtime_dashboard_api", { input });
 }
 
 export async function getExtensionsCatalog(): Promise<HermesExtensionsCatalog> {
@@ -188,104 +233,306 @@ export async function fetchOpenAICompatibleModels(
   return { models, modelsUrl };
 }
 
-interface TauriHermesChatStreamEvent {
-  streamId: string;
-  type: string;
-  data: unknown;
+export async function createHermesTuiSession(title: string): Promise<HermesTuiSession> {
+  const rpc = await TuiRpcConnection.connect();
+  try {
+    const result = await rpc.request<TuiSessionResult>("session.create", {
+      cols: 100,
+      title,
+    });
+    return normalizeTuiSessionResult(result);
+  } finally {
+    rpc.close();
+  }
 }
 
 export async function* streamHermesSessionChat(input: SessionChatInput): AsyncIterable<HermesStreamEvent> {
-  if (!isTauriRuntime()) {
-    throw new Error("桌面聊天流仅在 Tauri 应用中可用。");
-  }
-
   if (input.signal?.aborted) {
     throw abortError();
   }
 
-  const streamId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const queue: HermesStreamEvent[] = [];
-  let done = false;
-  let failure: unknown = null;
-  let wake: (() => void) | null = null;
-  const notify = () => {
-    wake?.();
-    wake = null;
-  };
-  const handleAbort = () => {
-    failure = abortError();
-    done = true;
-    notify();
-  };
+  const text = input.message.trim();
+  if (!text) {
+    throw new Error("消息不能为空。");
+  }
 
-  const unlisten = await listen<TauriHermesChatStreamEvent>("hermes-chat-stream", (event) => {
-    const payload = event.payload;
-    if (payload.streamId !== streamId) {
-      return;
-    }
-
-    if (payload.type === "transport.done") {
-      done = true;
-      notify();
-      return;
-    }
-
-    if (payload.type === "transport.error") {
-      failure = payload.data;
-      done = true;
-      notify();
-      return;
-    }
-
-    queue.push({
-      type: payload.type,
-      data: payload.data,
+  const rpc = await TuiRpcConnection.connect(input.signal);
+  try {
+    const sessionId = await resolveTransientSessionId(rpc, input);
+    await rpc.request("prompt.submit", {
+      session_id: sessionId,
+      text,
     });
 
-    if (payload.data === "[DONE]") {
-      done = true;
-    }
-    notify();
-  });
-  input.signal?.addEventListener("abort", handleAbort, { once: true });
+    while (true) {
+      const event = await rpc.nextEvent(input.signal);
+      if (!event) {
+        break;
+      }
 
-  const invokePromise = invoke<void>("hermes_chat_stream", {
-    input: {
-      streamId,
-      sessionId: input.sessionId,
-      message: input.message,
-      model: input.model,
-      files: input.files,
-    },
-  }).catch((error) => {
-    failure = error;
-    done = true;
-    notify();
-  });
-
-  try {
-    while (!done || queue.length > 0) {
-      if (queue.length > 0) {
-        yield queue.shift()!;
+      if (event.type === "gateway.ready") {
         continue;
       }
 
-      await new Promise<void>((resolve) => {
-        wake = resolve;
-      });
+      if (event.sessionId && event.sessionId !== sessionId) {
+        continue;
+      }
+
+      yield {
+        type: event.type,
+        data: event.payload,
+      };
+
+      if (event.type === "message.complete" || event.type === "error") {
+        break;
+      }
+    }
+  } finally {
+    rpc.close();
+  }
+}
+
+async function resolveTransientSessionId(
+  rpc: TuiRpcConnection,
+  input: SessionChatInput,
+) {
+  if (input.transientSessionId) {
+    return input.transientSessionId;
+  }
+
+  if (input.sessionId) {
+    const result = await rpc.request<TuiSessionResult>("session.resume", {
+      cols: 100,
+      session_id: input.sessionId,
+    });
+    return normalizeTuiSessionResult(result).sessionId;
+  }
+
+  const result = await rpc.request<TuiSessionResult>("session.create", {
+    cols: 100,
+    title: input.title,
+  });
+  return normalizeTuiSessionResult(result).sessionId;
+}
+
+function normalizeTuiSessionResult(result: TuiSessionResult): HermesTuiSession {
+  const sessionId = typeof result.session_id === "string" ? result.session_id : "";
+  const storedSessionId = typeof result.stored_session_id === "string" ? result.stored_session_id : sessionId;
+
+  if (!sessionId || !storedSessionId) {
+    throw new Error("Hermes TUI 没有返回有效 session_id。");
+  }
+
+  return {
+    messageCount: typeof result.message_count === "number" ? result.message_count : 0,
+    messages: Array.isArray(result.messages) ? result.messages : [],
+    sessionId,
+    storedSessionId,
+  };
+}
+
+class TuiRpcConnection {
+  private closed = false;
+  private eventQueue: TuiRpcEvent[] = [];
+  private failure: unknown = null;
+  private nextId = 1;
+  private pending = new Map<number, {
+    reject: (error: unknown) => void;
+    resolve: (value: unknown) => void;
+  }>();
+  private wake: (() => void) | null = null;
+
+  private constructor(private readonly socket: WebSocket) {
+    socket.addEventListener("message", (event) => this.handleMessage(event.data));
+    socket.addEventListener("close", () => {
+      this.closed = true;
+      this.rejectPending(new Error("Hermes TUI WebSocket 已关闭。"));
+      this.notify();
+    });
+    socket.addEventListener("error", () => {
+      this.failure = new Error("Hermes TUI WebSocket 连接失败。");
+      this.rejectPending(this.failure);
+      this.notify();
+    });
+  }
+
+  static async connect(signal?: AbortSignal) {
+    const connection = await getRuntimeConnection();
+    const wsUrl = connection.wsUrl;
+    if (!wsUrl) {
+      throw new Error("Hermes dashboard 没有返回 WebSocket 地址。");
     }
 
-    if (failure) {
-      if (failure instanceof Error) {
-        throw failure;
-      }
-      throw new Error(errorMessage(failure));
-    }
-    await invokePromise;
-  } finally {
-    input.signal?.removeEventListener("abort", handleAbort);
-    unlisten();
+    const socket = new WebSocket(wsUrl);
+    const rpc = new TuiRpcConnection(socket);
+    await waitForSocketOpen(socket, signal);
+    return rpc;
   }
+
+  close() {
+    if (this.closed) {
+      return;
+    }
+
+    this.closed = true;
+    this.socket.close();
+    this.rejectPending(new Error("Hermes TUI WebSocket 已关闭。"));
+    this.notify();
+  }
+
+  request<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+    if (this.closed || this.socket.readyState !== WebSocket.OPEN) {
+      return Promise.reject(new Error("Hermes TUI WebSocket 未连接。"));
+    }
+
+    const id = this.nextId;
+    this.nextId += 1;
+    const payload = {
+      jsonrpc: "2.0",
+      id,
+      method,
+      params,
+    };
+
+    return new Promise<T>((resolve, reject) => {
+      this.pending.set(id, {
+        reject,
+        resolve: (value) => resolve(value as T),
+      });
+      this.socket.send(JSON.stringify(payload));
+    });
+  }
+
+  async nextEvent(signal?: AbortSignal): Promise<TuiRpcEvent | null> {
+    while (this.eventQueue.length === 0 && !this.closed && !this.failure) {
+      await this.wait(signal);
+    }
+
+    if (this.failure) {
+      throw this.failure;
+    }
+
+    return this.eventQueue.shift() ?? null;
+  }
+
+  private handleMessage(raw: unknown) {
+    const text = typeof raw === "string" ? raw : "";
+    if (!text) {
+      return;
+    }
+
+    let message: unknown;
+    try {
+      message = JSON.parse(text);
+    } catch (error) {
+      this.failure = error;
+      this.notify();
+      return;
+    }
+
+    if (!isRecord(message)) {
+      return;
+    }
+
+    if (readString(message, "method") === "event") {
+      const params = recordValue(message.params);
+      const type = params ? readString(params, "type") : null;
+      if (!type) {
+        return;
+      }
+
+      this.eventQueue.push({
+        payload: params?.payload ?? null,
+        sessionId: params ? readString(params, "session_id") : null,
+        type,
+      });
+      this.notify();
+      return;
+    }
+
+    const id = typeof message.id === "number" ? message.id : null;
+    if (id === null) {
+      return;
+    }
+
+    const pending = this.pending.get(id);
+    if (!pending) {
+      return;
+    }
+
+    this.pending.delete(id);
+    const response = message as JsonRpcResponse<unknown>;
+    if (response.error) {
+      pending.reject(new Error(response.error.message ?? `Hermes TUI RPC ${id} 失败。`));
+      return;
+    }
+
+    pending.resolve(response.result);
+  }
+
+  private notify() {
+    this.wake?.();
+    this.wake = null;
+  }
+
+  private rejectPending(error: unknown) {
+    for (const pending of this.pending.values()) {
+      pending.reject(error);
+    }
+    this.pending.clear();
+  }
+
+  private wait(signal?: AbortSignal) {
+    if (signal?.aborted) {
+      return Promise.reject(abortError());
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      const cleanup = () => {
+        signal?.removeEventListener("abort", handleAbort);
+      };
+      const handleAbort = () => {
+        cleanup();
+        reject(abortError());
+      };
+      this.wake = () => {
+        cleanup();
+        resolve();
+      };
+      signal?.addEventListener("abort", handleAbort, { once: true });
+    });
+  }
+}
+
+function waitForSocketOpen(socket: WebSocket, signal?: AbortSignal) {
+  if (signal?.aborted) {
+    return Promise.reject(abortError());
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      socket.removeEventListener("open", handleOpen);
+      socket.removeEventListener("error", handleError);
+      signal?.removeEventListener("abort", handleAbort);
+    };
+    const handleOpen = () => {
+      cleanup();
+      resolve();
+    };
+    const handleError = () => {
+      cleanup();
+      reject(new Error("Hermes TUI WebSocket 连接失败。"));
+    };
+    const handleAbort = () => {
+      cleanup();
+      socket.close();
+      reject(abortError());
+    };
+
+    socket.addEventListener("open", handleOpen, { once: true });
+    socket.addEventListener("error", handleError, { once: true });
+    signal?.addEventListener("abort", handleAbort, { once: true });
+  });
 }
 
 function abortError() {
@@ -309,4 +556,17 @@ function normalizeOpenAIBaseUrl(input: string) {
 function openAIModelsUrl(baseUrl: string) {
   const lastSegment = baseUrl.split("/").filter(Boolean).at(-1) ?? "";
   return /^v\d+$/.test(lastSegment) ? `${baseUrl}/models` : `${baseUrl}/v1/models`;
+}
+
+function isRecord(value: unknown): value is Record<PropertyKey, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function recordValue(value: unknown): Record<PropertyKey, unknown> | null {
+  return isRecord(value) ? value : null;
+}
+
+function readString(record: Record<PropertyKey, unknown>, key: string) {
+  const value = record[key];
+  return typeof value === "string" ? value : null;
 }

@@ -24,7 +24,7 @@ export function HomePage() {
   const editor = useEditor();
   const [draft, setDraft] = useState("");
   const [editorReady, setEditorReady] = useState(false);
-  const runtimeReady = !tauriRuntime || Boolean(status.data?.running && status.data.apiKeyConfigured);
+  const runtimeReady = !tauriRuntime || Boolean(status.data?.dashboardRunning && status.data.sessionTokenConfigured);
   const submittingDisabled = !apiReady || !runtimeReady;
   const canSubmit = Boolean(draft.trim() && !submittingDisabled);
 

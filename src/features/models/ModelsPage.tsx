@@ -25,7 +25,7 @@ import {
   getModelConfigStatus,
   getRuntimeStatus,
   isTauriRuntime,
-  restartGateway,
+  restartDashboard,
   saveOpenAICompatibleModelConfig,
 } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
@@ -97,7 +97,7 @@ export function ModelsPage() {
   });
 
   const restart = useMutation({
-    mutationFn: restartGateway,
+    mutationFn: restartDashboard,
     onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: hermesQueryKeys.runtimeStatus });
       if (result.success) {

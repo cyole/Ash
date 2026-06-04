@@ -13,8 +13,8 @@ impl RuntimePaths {
         self.hermes_home.join("config.yaml")
     }
 
-    pub(crate) fn env_path(&self) -> PathBuf {
-        self.hermes_home.join(".env")
+    pub(crate) fn web_dist_path(&self) -> PathBuf {
+        self.root.join("web-dist")
     }
 }
 

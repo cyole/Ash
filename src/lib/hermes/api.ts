@@ -1,28 +1,34 @@
 import type { HermesBackend } from "@/lib/hermes/backend";
 import type {
-  ApprovalInput,
-  CreateSessionInput,
   HermesHealth,
   HermesMessage,
-  HermesModelsResponse,
-  HermesRun,
+  HermesModel,
   HermesSession,
-  HermesStreamEvent,
-  HermesUploadedFile,
   RenameSessionInput,
-  SessionChatInput,
-  StartRunInput,
 } from "@/lib/hermes/types";
+import type { RuntimeDashboardApiInput } from "@/types/hermes";
 
-export const DEFAULT_HERMES_API_URL = "http://127.0.0.1:8642";
+export const DEFAULT_HERMES_API_URL = "http://127.0.0.1:9120";
 
-const ENDPOINT_FALLBACK_STATUSES = new Set([404, 405, 501]);
 const MAX_ERROR_BODY_LENGTH = 1_000;
+const SESSION_TOKEN_HEADER = "X-Hermes-Session-Token";
 
 interface HermesApiClientOptions {
   baseUrl?: string;
-  apiKey?: string;
   fetchImpl?: typeof fetch;
+  requestImpl?: <T>(input: RuntimeDashboardApiInput) => Promise<T>;
+  sessionToken?: string;
+}
+
+interface ModelOptionsProvider {
+  models?: unknown;
+  name?: unknown;
+  provider?: unknown;
+}
+
+interface ModelOptionsPayload {
+  models?: unknown;
+  providers?: unknown;
 }
 
 export class HermesApiError extends Error {
@@ -42,184 +48,62 @@ export class HermesApiError extends Error {
 
 export class HermesApiClient implements HermesBackend {
   private readonly baseUrl: string;
-  private readonly apiKey?: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly requestImpl?: <T>(input: RuntimeDashboardApiInput) => Promise<T>;
+  private readonly sessionToken?: string;
 
   constructor(options: HermesApiClientOptions = {}) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl ?? DEFAULT_HERMES_API_URL);
-    this.apiKey = options.apiKey;
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
+    this.requestImpl = options.requestImpl;
+    this.sessionToken = options.sessionToken;
   }
 
   async health(): Promise<HermesHealth> {
-    return this.request<HermesHealth>("/health");
+    return this.request<HermesHealth>("/api/status");
   }
 
-  async listModels() {
-    const response = await this.request<HermesModelsResponse>("/v1/models");
-    return response.data ?? [];
+  async listModels(): Promise<HermesModel[]> {
+    const response = await this.request<ModelOptionsPayload>("/api/model/options");
+    return normalizeModelOptions(response);
   }
 
   async listSessions(): Promise<HermesSession[]> {
-    const response = await requestWithEndpointFallback(
-      () => this.request<ListResponse<HermesSession>>("/api/sessions"),
-      () => this.request<ListResponse<HermesSession>>("/api/hermes/sessions?limit=100"),
+    const response = await this.request<ListResponse<HermesSession>>(
+      "/api/sessions?limit=100&offset=0&min_messages=1&order=recent",
     );
     return normalizeSessionsResponse(response);
   }
 
-  async createSession(input: CreateSessionInput = {}): Promise<HermesSession> {
-    const response = await requestWithEndpointFallback(
-      () => this.request<HermesSession | { session: HermesSession }>("/api/sessions", {
-        method: "POST",
-        body: JSON.stringify(input),
-      }),
-      () => this.request<HermesSession | { session: HermesSession }>("/api/hermes/sessions", {
-        method: "POST",
-        body: JSON.stringify(input),
-      }),
-    );
-    return isSessionWrapper(response) ? response.session : response;
-  }
-
   async renameSession(input: RenameSessionInput): Promise<void> {
-    await requestWithEndpointFallback(
-      () => this.request(`/api/sessions/${encodeURIComponent(input.sessionId)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ title: input.title }),
-      }),
-      () => this.request(`/api/hermes/sessions/${encodeURIComponent(input.sessionId)}/rename`, {
-        method: "POST",
-        body: JSON.stringify({ title: input.title }),
-      }),
-    );
+    await this.request(`/api/sessions/${encodeURIComponent(input.sessionId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title: input.title }),
+    });
   }
 
   async deleteSession(sessionId: string): Promise<void> {
-    await requestWithEndpointFallback(
-      () => this.request(`/api/sessions/${encodeURIComponent(sessionId)}`, {
-        method: "DELETE",
-      }),
-      () => this.request(`/api/hermes/sessions/${encodeURIComponent(sessionId)}`, {
-        method: "DELETE",
-      }),
-    );
+    await this.request(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+      method: "DELETE",
+    });
   }
 
   async listSessionMessages(sessionId: string): Promise<HermesMessage[]> {
-    const response = await requestWithEndpointFallback(
-      () => this.request<ListResponse<HermesMessage>>(
-        `/api/sessions/${encodeURIComponent(sessionId)}/messages`,
-      ),
-      () => this.request<ListResponse<HermesMessage>>(
-        `/api/hermes/sessions/conversations/${encodeURIComponent(sessionId)}/messages/paginated?offset=0&limit=300`,
-      ),
+    const response = await this.request<ListResponse<HermesMessage>>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/messages`,
     );
     return normalizeMessagesResponse(response);
   }
 
-  async uploadFiles(files: File[]): Promise<HermesUploadedFile[]> {
-    if (files.length === 0) {
-      return [];
-    }
-
-    const formData = new FormData();
-    for (const file of files) {
-      formData.append("file", file, file.name);
-    }
-
-    const response = await this.request<{ files?: HermesUploadedFile[] }>("/upload", {
-      method: "POST",
-      body: formData,
-    });
-
-    return response.files ?? [];
-  }
-
-  async *streamSessionChat(input: SessionChatInput): AsyncIterable<HermesStreamEvent> {
-    const sessionId = input.sessionId || createDesktopSessionId();
-    const response = await this.rawRequest("/v1/chat/completions", {
-      method: "POST",
-      body: JSON.stringify({
-        model: input.model,
-        stream: true,
-        session_id: sessionId,
-        messages: [
-          {
-            role: "user",
-            content: input.message,
-          },
-        ],
-        files: input.files,
-      }),
-      signal: input.signal,
-    });
-
-    yield* parseSseStream(response);
-  }
-
-  async probeChatCompletion(input: Omit<SessionChatInput, "sessionId">): Promise<string> {
-    const response = await this.request<{
-      choices?: Array<{ message?: { content?: unknown } }>;
-      error?: { message?: unknown };
-    }>("/v1/chat/completions", {
-      method: "POST",
-      body: JSON.stringify({
-        model: input.model,
-        stream: false,
-        messages: [
-          {
-            role: "user",
-            content: input.message,
-          },
-        ],
-        files: input.files,
-      }),
-      signal: input.signal,
-    });
-
-    const content = response.choices?.[0]?.message?.content;
-    if (typeof content === "string" && content.trim()) {
-      return content;
-    }
-
-    const error = response.error?.message;
-    if (typeof error === "string" && error.trim()) {
-      throw new Error(error);
-    }
-
-    return "";
-  }
-
-  async startRun(input: StartRunInput): Promise<HermesRun> {
-    return this.request<HermesRun>("/v1/runs", {
-      method: "POST",
-      body: JSON.stringify(input),
-    });
-  }
-
-  async *streamRunEvents(runId: string): AsyncIterable<HermesStreamEvent> {
-    const response = await this.rawRequest(`/v1/runs/${encodeURIComponent(runId)}/events`);
-    yield* parseSseStream(response);
-  }
-
-  async stopRun(runId: string): Promise<void> {
-    await this.request(`/v1/runs/${encodeURIComponent(runId)}/stop`, {
-      method: "POST",
-    });
-  }
-
-  async approveRun(input: ApprovalInput): Promise<void> {
-    await this.request(`/v1/runs/${encodeURIComponent(input.runId)}/approval`, {
-      method: "POST",
-      body: JSON.stringify({
-        decision: input.decision,
-        note: input.note,
-      }),
-    });
-  }
-
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+    if (this.requestImpl) {
+      return this.requestImpl<T>({
+        body: requestBodyValue(init.body),
+        method: requestMethodValue(init.method),
+        path,
+      });
+    }
+
     const response = await this.rawRequest(path, init);
     return response.json() as Promise<T>;
   }
@@ -228,12 +112,12 @@ export class HermesApiClient implements HermesBackend {
     const headers = new Headers(init.headers);
     headers.set("Accept", headers.get("Accept") ?? "application/json");
 
-    if (init.body && !headers.has("Content-Type") && !(init.body instanceof FormData)) {
+    if (init.body && !headers.has("Content-Type")) {
       headers.set("Content-Type", "application/json");
     }
 
-    if (this.apiKey && !headers.has("Authorization")) {
-      headers.set("Authorization", `Bearer ${this.apiKey}`);
+    if (this.sessionToken && !headers.has(SESSION_TOKEN_HEADER)) {
+      headers.set(SESSION_TOKEN_HEADER, this.sessionToken);
     }
 
     const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
@@ -249,23 +133,7 @@ export class HermesApiClient implements HermesBackend {
   }
 }
 
-type ListResponse<T> = T[] | { data?: T[]; sessions?: T[]; messages?: T[] };
-
-async function requestWithEndpointFallback<T>(primary: () => Promise<T>, fallback: () => Promise<T>) {
-  try {
-    return await primary();
-  } catch (error) {
-    if (!isEndpointFallbackError(error)) {
-      throw error;
-    }
-
-    return fallback();
-  }
-}
-
-function isEndpointFallbackError(error: unknown) {
-  return error instanceof HermesApiError && ENDPOINT_FALLBACK_STATUSES.has(error.status);
-}
+type ListResponse<T> = T[] | { data?: T[]; messages?: T[]; sessions?: T[] };
 
 async function readResponseText(response: Response) {
   try {
@@ -282,126 +150,121 @@ function trimErrorBody(body: string) {
 }
 
 function normalizeSessionsResponse(response: ListResponse<HermesSession>) {
-  return Array.isArray(response) ? response : response.data ?? response.sessions ?? [];
+  return Array.isArray(response) ? response : response.sessions ?? response.data ?? [];
 }
 
 function normalizeMessagesResponse(response: ListResponse<HermesMessage>) {
-  return Array.isArray(response) ? response : response.data ?? response.messages ?? [];
-}
-
-function isSessionWrapper(response: HermesSession | { session: HermesSession }): response is { session: HermesSession } {
-  return typeof response === "object" && response !== null && "session" in response;
+  return Array.isArray(response) ? response : response.messages ?? response.data ?? [];
 }
 
 function normalizeBaseUrl(baseUrl: string) {
   return baseUrl.replace(/\/+$/, "");
 }
 
-async function* parseSseStream(response: Response): AsyncIterable<HermesStreamEvent> {
-  if (!response.body) {
-    return;
+function requestBodyValue(body: BodyInit | null | undefined) {
+  if (body === undefined || body === null) {
+    return undefined;
   }
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) {
-      break;
-    }
-
-    buffer += decoder.decode(value, { stream: true });
-    let nextBlock = readNextSseBlock(buffer);
-    while (nextBlock) {
-      buffer = nextBlock.rest;
-      const event = parseSseEvent(nextBlock.block);
-      if (event) {
-        yield event;
-      }
-      nextBlock = readNextSseBlock(buffer);
-    }
-  }
-
-  if (buffer.trim()) {
-    const event = parseSseEvent(buffer);
-    if (event) {
-      yield event;
-    }
-  }
-}
-
-function parseSseEvent(chunk: string): HermesStreamEvent | null {
-  let type = "message";
-  const dataLines: string[] = [];
-
-  for (const line of chunk.split(/\r?\n/)) {
-    if (line.startsWith("event:")) {
-      type = line.slice("event:".length).trim();
-    }
-
-    if (line.startsWith("data:")) {
-      dataLines.push(line.slice("data:".length).trimStart());
-    }
-  }
-
-  if (dataLines.length === 0) {
-    return null;
-  }
-
-  const rawData = dataLines.join("\n");
-
-  return {
-    type,
-    data: parseEventData(rawData),
-  };
-}
-
-function readNextSseBlock(buffer: string) {
-  const delimiter = findSseDelimiter(buffer);
-  if (!delimiter) {
-    return null;
-  }
-
-  return {
-    block: buffer.slice(0, delimiter.index),
-    rest: buffer.slice(delimiter.index + delimiter.length),
-  };
-}
-
-function findSseDelimiter(buffer: string) {
-  const lfIndex = buffer.indexOf("\n\n");
-  const crlfIndex = buffer.indexOf("\r\n\r\n");
-
-  if (lfIndex === -1 && crlfIndex === -1) {
-    return null;
-  }
-
-  if (lfIndex === -1) {
-    return { index: crlfIndex, length: 4 };
-  }
-
-  if (crlfIndex === -1 || lfIndex < crlfIndex) {
-    return { index: lfIndex, length: 2 };
-  }
-
-  return { index: crlfIndex, length: 4 };
-}
-
-function parseEventData(rawData: string): unknown {
-  if (rawData === "[DONE]") {
-    return rawData;
+  if (typeof body !== "string") {
+    throw new Error("Hermes dashboard API 代理只支持 JSON 字符串请求体。");
   }
 
   try {
-    return JSON.parse(rawData);
-  } catch {
-    return rawData;
+    return JSON.parse(body) as unknown;
+  } catch (error) {
+    throw new Error(`Hermes dashboard API 请求体不是有效 JSON：${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
-function createDesktopSessionId() {
-  const randomId = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(16).slice(2);
-  return `desk-${Date.now()}-${randomId}`;
+function requestMethodValue(method: string | undefined) {
+  const normalized = (method ?? "GET").toUpperCase();
+  if (
+    normalized === "DELETE"
+    || normalized === "GET"
+    || normalized === "PATCH"
+    || normalized === "POST"
+  ) {
+    return normalized;
+  }
+
+  throw new Error(`不支持的 Hermes dashboard API 方法：${normalized}。`);
+}
+
+function normalizeModelOptions(payload: ModelOptionsPayload): HermesModel[] {
+  const models = new Map<string, HermesModel>();
+  collectModels(payload.models, models);
+
+  const providers = payload.providers;
+  if (Array.isArray(providers)) {
+    for (const provider of providers) {
+      if (isModelOptionsProvider(provider)) {
+        collectModels(provider.models, models, providerName(provider));
+      }
+    }
+  } else if (isRecord(providers)) {
+    for (const [key, provider] of Object.entries(providers)) {
+      if (isModelOptionsProvider(provider)) {
+        collectModels(provider.models, models, providerName(provider) ?? key);
+      }
+    }
+  }
+
+  return [...models.values()].sort((left, right) => left.id.localeCompare(right.id));
+}
+
+function collectModels(input: unknown, output: Map<string, HermesModel>, provider?: string | null) {
+  if (!Array.isArray(input)) {
+    return;
+  }
+
+  for (const item of input) {
+    const id = modelId(item);
+    if (!id) {
+      continue;
+    }
+
+    output.set(id, {
+      id,
+      owned_by: provider ?? undefined,
+    });
+  }
+}
+
+function modelId(input: unknown) {
+  if (typeof input === "string") {
+    return input.trim();
+  }
+
+  if (!isRecord(input)) {
+    return "";
+  }
+
+  return (
+    readString(input, "id")
+    ?? readString(input, "model")
+    ?? readString(input, "name")
+    ?? ""
+  ).trim();
+}
+
+function isModelOptionsProvider(input: unknown): input is ModelOptionsProvider {
+  return isRecord(input);
+}
+
+function providerName(provider: ModelOptionsProvider) {
+  return typeof provider.name === "string"
+    ? provider.name
+    : typeof provider.provider === "string"
+      ? provider.provider
+      : null;
+}
+
+function isRecord(value: unknown): value is Record<PropertyKey, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function readString(record: Record<PropertyKey, unknown>, key: string) {
+  const value = record[key];
+  return typeof value === "string" ? value : null;
 }

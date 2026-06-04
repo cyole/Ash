@@ -5,12 +5,15 @@ use serde::{Deserialize, Serialize};
 pub struct RuntimeStatus {
     pub(crate) installed: bool,
     pub(crate) running: bool,
-    pub(crate) gateway_running: bool,
-    pub(crate) api_key_configured: bool,
+    pub(crate) dashboard_running: bool,
+    pub(crate) background_gateway_running: bool,
+    pub(crate) session_token_configured: bool,
     pub(crate) path: Option<String>,
+    pub(crate) python_path: Option<String>,
     pub(crate) version: Option<String>,
     pub(crate) mode: String,
     pub(crate) api_url: String,
+    pub(crate) ws_url: Option<String>,
     pub(crate) install_source: String,
     pub(crate) bundled_runtime_archive: String,
     pub(crate) bundled_runtime_found: bool,
@@ -19,7 +22,8 @@ pub struct RuntimeStatus {
     pub(crate) config_path: String,
     pub(crate) legacy_config_path: Option<String>,
     pub(crate) legacy_config_found: bool,
-    pub(crate) gateway_status: Option<String>,
+    pub(crate) dashboard_status: Option<String>,
+    pub(crate) backend_pid: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -33,9 +37,18 @@ pub struct RuntimeCommandResult {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RuntimeApiAuth {
+pub struct RuntimeConnection {
     pub(crate) api_url: String,
-    pub(crate) api_key: Option<String>,
+    pub(crate) ws_url: Option<String>,
+    pub(crate) session_token: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeDashboardApiInput {
+    pub(crate) path: String,
+    pub(crate) method: Option<String>,
+    pub(crate) body: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -53,16 +66,6 @@ pub struct OpenAiModelConfigInput {
 pub struct OpenAiModelsInput {
     pub(crate) base_url: String,
     pub(crate) api_key: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct HermesChatStreamInput {
-    pub(crate) stream_id: String,
-    pub(crate) session_id: String,
-    pub(crate) message: String,
-    pub(crate) model: Option<String>,
-    pub(crate) files: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize)]

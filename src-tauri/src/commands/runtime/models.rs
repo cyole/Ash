@@ -4,8 +4,8 @@ use std::collections::BTreeSet;
 use tauri::AppHandle;
 
 use super::config::{
-    enforce_local_api_server, ensure_api_server_config, ensure_mapping_child, ensure_mapping_value,
-    read_yaml_file, restrict_secret_file_permissions, set_api_server_model_name, write_yaml_file,
+    ensure_mapping_child, ensure_mapping_value, ensure_runtime_config, read_yaml_file,
+    restrict_secret_file_permissions, write_yaml_file,
 };
 use super::constants::PROVIDER_MODEL_FETCH_TIMEOUT;
 use super::paths::{runtime_paths, RuntimePaths};
@@ -25,7 +25,7 @@ struct OpenAiModelEntry {
 
 pub(crate) fn model_config_status_impl(app: AppHandle) -> Result<ModelConfigStatus, String> {
     let paths = runtime_paths(&app);
-    ensure_api_server_config(&paths)?;
+    ensure_runtime_config(&paths)?;
     let config = read_yaml_file(&paths.config_path())?;
     Ok(read_model_config_status(&paths, &config))
 }
@@ -35,7 +35,7 @@ pub(crate) fn model_config_save_openai_impl(
     input: OpenAiModelConfigInput,
 ) -> Result<ModelConfigStatus, String> {
     let paths = runtime_paths(&app);
-    ensure_api_server_config(&paths)?;
+    ensure_runtime_config(&paths)?;
 
     let name = normalize_model_config_name(&input.name);
     let base_url = normalize_openai_base_url(&input.base_url)?;
@@ -69,9 +69,6 @@ pub(crate) fn model_config_save_openai_impl(
     );
     model_config.remove(&Value::String("base_url".to_string()));
     model_config.remove(&Value::String("api_key".to_string()));
-    set_api_server_model_name(root, model);
-
-    enforce_local_api_server(&mut config);
     write_yaml_file(&config_path, &config)?;
     restrict_secret_file_permissions(&config_path)?;
 

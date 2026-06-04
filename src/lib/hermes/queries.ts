@@ -1,17 +1,17 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { DEFAULT_HERMES_API_URL, HermesApiClient } from "@/lib/hermes/api";
-import { getRuntimeApiAuth, getRuntimeStatus, isTauriRuntime } from "@/lib/tauri";
+import { dashboardApi, getRuntimeConnection, getRuntimeStatus, isTauriRuntime } from "@/lib/tauri";
 
 export const hermesQueryKeys = {
   extensionsCatalog: ["hermes-extensions-catalog"] as const,
   modelConfigStatus: ["model-config-status"] as const,
   runtimeStatus: ["runtime-status"] as const,
-  runtimeApiAuth: ["runtime-api-auth"] as const,
-  sessions: (apiUrl: string, hasApiKey: boolean) => ["hermes-sessions", apiUrl, hasApiKey] as const,
-  models: (apiUrl: string, hasApiKey: boolean) => ["hermes-models", apiUrl, hasApiKey] as const,
-  sessionMessages: (apiUrl: string, hasApiKey: boolean, sessionId: string | null) =>
-    ["hermes-session-messages", apiUrl, hasApiKey, sessionId] as const,
+  runtimeConnection: ["runtime-connection"] as const,
+  sessions: (apiUrl: string, hasSessionToken: boolean) => ["hermes-sessions", apiUrl, hasSessionToken] as const,
+  models: (apiUrl: string, hasSessionToken: boolean) => ["hermes-models", apiUrl, hasSessionToken] as const,
+  sessionMessages: (apiUrl: string, hasSessionToken: boolean, sessionId: string | null) =>
+    ["hermes-session-messages", apiUrl, hasSessionToken, sessionId] as const,
 };
 
 export function useHermesApi() {
@@ -23,23 +23,30 @@ export function useHermesApi() {
     refetchInterval: 15_000,
   });
 
-  const apiAuth = useQuery({
-    queryKey: hermesQueryKeys.runtimeApiAuth,
-    queryFn: getRuntimeApiAuth,
+  const connection = useQuery({
+    queryKey: hermesQueryKeys.runtimeConnection,
+    queryFn: getRuntimeConnection,
     retry: false,
   });
 
-  const apiUrl = apiAuth.data?.apiUrl ?? status.data?.apiUrl ?? DEFAULT_HERMES_API_URL;
-  const apiKey = apiAuth.data?.apiKey ?? undefined;
-  const apiReady = !tauriRuntime || apiAuth.isSuccess;
-  const client = useMemo(() => new HermesApiClient({ baseUrl: apiUrl, apiKey }), [apiKey, apiUrl]);
+  const apiUrl = connection.data?.apiUrl ?? status.data?.apiUrl ?? DEFAULT_HERMES_API_URL;
+  const sessionToken = connection.data?.sessionToken ?? undefined;
+  const apiReady = !tauriRuntime || connection.isSuccess;
+  const client = useMemo(
+    () => new HermesApiClient({
+      baseUrl: apiUrl,
+      requestImpl: tauriRuntime ? dashboardApi : undefined,
+      sessionToken,
+    }),
+    [apiUrl, sessionToken, tauriRuntime],
+  );
 
   return {
-    apiAuth,
-    apiKey,
     apiReady,
     apiUrl,
     client,
+    connection,
+    sessionToken,
     status,
     tauriRuntime,
   };

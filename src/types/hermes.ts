@@ -1,6 +1,7 @@
 export type RuntimeMode =
   | "local-app"
   | "local-managed"
+  | "local-managed-dashboard"
   | "local-existing"
   | "remote"
   | "browser-preview";
@@ -8,12 +9,15 @@ export type RuntimeMode =
 export interface HermesStatus {
   installed: boolean;
   running: boolean;
-  gatewayRunning: boolean;
-  apiKeyConfigured: boolean;
+  dashboardRunning: boolean;
+  backgroundGatewayRunning: boolean;
+  sessionTokenConfigured: boolean;
   path: string | null;
+  pythonPath: string | null;
   version: string | null;
   mode: RuntimeMode;
   apiUrl: string;
+  wsUrl: string | null;
   installSource: "managed" | "system" | string;
   bundledRuntimeArchive: string;
   bundledRuntimeFound: boolean;
@@ -22,7 +26,8 @@ export interface HermesStatus {
   configPath: string;
   legacyConfigPath: string | null;
   legacyConfigFound: boolean;
-  gatewayStatus: string | null;
+  dashboardStatus: string | null;
+  backendPid: number | null;
 }
 
 export interface RuntimeCommandResult {
@@ -32,9 +37,16 @@ export interface RuntimeCommandResult {
   stderr: string;
 }
 
-export interface RuntimeApiAuth {
+export interface RuntimeConnection {
   apiUrl: string;
-  apiKey: string | null;
+  wsUrl: string | null;
+  sessionToken: string | null;
+}
+
+export interface RuntimeDashboardApiInput {
+  body?: unknown;
+  method?: "DELETE" | "GET" | "PATCH" | "POST";
+  path: string;
 }
 
 export interface OpenAICompatibleModelConfig {

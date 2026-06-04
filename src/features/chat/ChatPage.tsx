@@ -30,7 +30,7 @@ import { errorMessage } from "@/lib/errors";
 import type { HermesMessage, HermesSession, HermesStreamEvent } from "@/lib/hermes";
 import { hermesQueryKeys, useHermesApi } from "@/lib/hermes/queries";
 import { cn } from "@/lib/utils";
-import { streamHermesSessionChat } from "@/lib/tauri";
+import { createHermesTuiSession, streamHermesSessionChat } from "@/lib/tauri";
 
 interface ChatMessage {
   id: string;
@@ -127,7 +127,7 @@ export function ChatPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { settings } = useHermesSettings();
-  const { apiKey, apiReady, apiUrl, client, status, tauriRuntime } = useHermesApi();
+  const { apiReady, apiUrl, client, sessionToken, status, tauriRuntime } = useHermesApi();
   const selectedSessionId = searchParams.get(chatSessionSearchParam);
   const [messagesBySession, setMessagesBySession] = useState<MessagesBySession>({});
   const [draft, setDraft] = useState("");
@@ -152,17 +152,17 @@ export function ChatPage() {
 
   const sessions = useQuery({
     enabled: apiReady,
-    queryKey: hermesQueryKeys.sessions(apiUrl, Boolean(apiKey)),
+    queryKey: hermesQueryKeys.sessions(apiUrl, Boolean(sessionToken)),
     queryFn: () => client.listSessions(),
   });
 
   const sessionMessages = useQuery({
     enabled: apiReady && Boolean(selectedSessionId),
-    queryKey: hermesQueryKeys.sessionMessages(apiUrl, Boolean(apiKey), selectedSessionId),
+    queryKey: hermesQueryKeys.sessionMessages(apiUrl, Boolean(sessionToken), selectedSessionId),
     queryFn: () => selectedSessionId ? client.listSessionMessages(selectedSessionId) : Promise.resolve([]),
   });
 
-  const runtimeReady = !tauriRuntime || Boolean(status.data?.running && status.data.apiKeyConfigured);
+  const runtimeReady = !tauriRuntime || Boolean(status.data?.dashboardRunning && status.data.sessionTokenConfigured);
   const messages = selectedSessionId ? messagesBySession[selectedSessionId] ?? [] : [];
   const activeStreamId = selectedSessionId ? activeStreams[selectedSessionId] ?? null : null;
   const queuedPrompts = selectedSessionId ? queuedPromptsBySession[selectedSessionId] ?? [] : [];
@@ -428,7 +428,14 @@ export function ChatPage() {
     let shouldRunQueuedPrompt = false;
 
     try {
-      const sessionId = sessionIdForRun ?? await createChatSession(prompt);
+      let transientSessionId: string | undefined;
+      if (!sessionIdForRun) {
+        const session = await createChatSession(prompt);
+        sessionIdForRun = session.storedSessionId;
+        transientSessionId = session.sessionId;
+      }
+
+      const sessionId = sessionIdForRun;
       sessionIdForRun = sessionId;
       token = (streamTokensRef.current.get(sessionId) ?? 0) + 1;
       streamTokensRef.current.set(sessionId, token);
@@ -446,19 +453,14 @@ export function ChatPage() {
       const controller = new AbortController();
       abortControllersRef.current.set(sessionId, controller);
 
-      const stream = tauriRuntime
-        ? streamHermesSessionChat({
-            message: prompt,
-            model: normalizedModelOverride(modelOverride),
-            sessionId,
-            signal: controller.signal,
-          })
-        : client.streamSessionChat({
-            message: prompt,
-            model: normalizedModelOverride(modelOverride),
-            sessionId,
-            signal: controller.signal,
-          });
+      const stream = streamHermesSessionChat({
+        message: prompt,
+        model: normalizedModelOverride(modelOverride),
+        sessionId,
+        signal: controller.signal,
+        title: titleFromPrompt(prompt),
+        transientSessionId,
+      });
 
       let receivedContent = false;
       let receivedToolActivity = false;
@@ -491,15 +493,20 @@ export function ChatPage() {
           continue;
         }
 
+        if (isDoneEvent(streamEvent)) {
+          const finalText = streamEventFinalText(streamEvent);
+          if (!receivedContent && finalText) {
+            receivedContent = true;
+            appendAssistantDelta(sessionId, assistantMessage.id, finalText);
+          }
+          break;
+        }
+
         const delta = streamEventText(streamEvent);
         if (delta) {
           receivedContent = true;
           appendAssistantDelta(sessionId, assistantMessage.id, delta);
           continue;
-        }
-
-        if (isDoneEvent(streamEvent)) {
-          break;
         }
       }
 
@@ -792,23 +799,29 @@ export function ChatPage() {
   }
 
   async function createChatSession(prompt: string) {
-    const session = await client.createSession({
+    const title = titleFromPrompt(prompt);
+    const session = await createHermesTuiSession(title);
+    const now = new Date().toISOString();
+    const storedSession: HermesSession = {
+      id: session.storedSessionId,
       source: "desktop-chat",
-      title: titleFromPrompt(prompt),
-    });
-    setSelectedSession(session.id, true);
+      title,
+      created_at: now,
+      updated_at: now,
+    };
+    setSelectedSession(session.storedSessionId, true);
     queryClient.setQueryData<HermesSession[]>(
-      hermesQueryKeys.sessions(apiUrl, Boolean(apiKey)),
-      (current) => mergeSession(current, session),
+      hermesQueryKeys.sessions(apiUrl, Boolean(sessionToken)),
+      (current) => mergeSession(current, storedSession),
     );
-    return session.id;
+    return session;
   }
 
   async function refreshChatQueries(sessionId: string) {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: hermesQueryKeys.sessions(apiUrl, Boolean(apiKey)) }),
+      queryClient.invalidateQueries({ queryKey: hermesQueryKeys.sessions(apiUrl, Boolean(sessionToken)) }),
       queryClient.invalidateQueries({
-        queryKey: hermesQueryKeys.sessionMessages(apiUrl, Boolean(apiKey), sessionId),
+        queryKey: hermesQueryKeys.sessionMessages(apiUrl, Boolean(sessionToken), sessionId),
       }),
     ]);
   }
@@ -1661,23 +1674,26 @@ function streamEventToolUpdate(event: HermesStreamEvent): ToolUpdate | null {
     return null;
   }
 
-  if (eventName === "tool.started") {
+  if (eventName === "tool.started" || eventName === "tool.start" || eventName === "tool.progress" || eventName === "tool.generating") {
     const name = readString(data, "tool") ?? readString(data, "name") ?? "工具调用";
     return {
-      id: readString(data, "tool_call_id") ?? readString(data, "toolCallId") ?? undefined,
+      id: readToolId(data),
       name,
-      preview: readString(data, "preview") ?? summarizeToolArguments(readString(data, "arguments")),
+      preview: readString(data, "preview")
+        ?? readString(data, "message")
+        ?? readString(data, "context")
+        ?? summarizeToolArguments(readString(data, "arguments") ?? readString(data, "args") ?? readString(data, "input")),
       status: "running",
-      toolArgs: readString(data, "arguments") ?? undefined,
+      toolArgs: readString(data, "arguments") ?? readString(data, "args") ?? readString(data, "input") ?? undefined,
     };
   }
 
-  if (eventName === "tool.completed") {
+  if (eventName === "tool.completed" || eventName === "tool.complete") {
     const name = readString(data, "tool") ?? readString(data, "name") ?? "工具调用";
     const output = readString(data, "output") ?? readString(data, "result") ?? undefined;
     return {
-      duration: readNumber(data, "duration") ?? readNumber(data, "duration_seconds") ?? undefined,
-      id: readString(data, "tool_call_id") ?? readString(data, "toolCallId") ?? undefined,
+      duration: readNumber(data, "duration") ?? readNumber(data, "duration_seconds") ?? readNumber(data, "duration_s") ?? undefined,
+      id: readToolId(data),
       name,
       preview: toolPreviewFromResult(output ?? ""),
       result: output,
@@ -1700,6 +1716,11 @@ function streamEventText(event: HermesStreamEvent): string {
     || eventName === "thinking.delta"
     || eventName === "tool.started"
     || eventName === "tool.completed"
+    || eventName === "tool.start"
+    || eventName === "tool.complete"
+    || eventName === "tool.progress"
+    || eventName === "tool.generating"
+    || eventName === "message.complete"
     || eventName.startsWith("subagent.")
   ) {
     return "";
@@ -1755,6 +1776,16 @@ function choiceText(choice: unknown): string {
   );
 }
 
+function readToolId(data: Record<PropertyKey, unknown>) {
+  return (
+    readString(data, "tool_id")
+    ?? readString(data, "tool_call_id")
+    ?? readString(data, "toolCallId")
+    ?? readString(data, "id")
+    ?? undefined
+  );
+}
+
 function streamEventError(event: HermesStreamEvent): string | null {
   const data = streamEventRecord(event) ?? event.data;
   if (!event.type.toLowerCase().includes("error") && !hasErrorPayload(data)) {
@@ -1786,6 +1817,19 @@ function streamEventError(event: HermesStreamEvent): string | null {
   return "流式响应返回错误。";
 }
 
+function streamEventFinalText(event: HermesStreamEvent): string {
+  if (streamEventName(event) !== "message.complete") {
+    return "";
+  }
+
+  const data = streamEventRecord(event);
+  if (!data) {
+    return "";
+  }
+
+  return normalizeEscapedText(readString(data, "text") ?? readString(data, "content") ?? "");
+}
+
 function hasErrorPayload(data: unknown): boolean {
   return isRecord(data) && "error" in data;
 }
@@ -1799,6 +1843,7 @@ function isDoneEvent(event: HermesStreamEvent): boolean {
   if (
     eventName === "done"
     || eventName === "message.completed"
+    || eventName === "message.complete"
     || eventName === "response.completed"
     || eventName === "run.completed"
     || eventName === "transport.done"
