@@ -90,28 +90,6 @@ jobs:
         shell: bash
         run: printf '{}\n' > src-tauri/ci-signing.json
 
-      - name: Build bundled Hermes runtime (macOS)
-        if: runner.os == 'macOS'
-        shell: bash
-        run: scripts/build-hermes-runtime.sh
-
-      - name: Build bundled Hermes runtime (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: ./scripts/build-hermes-runtime.ps1
-
-      - name: Verify bundled Hermes runtime
-        shell: bash
-        run: |
-          archive="src-tauri/resources/hermes-runtime/${{ matrix.runtimeArchive }}"
-          if [ ! -s "$archive" ]; then
-            echo "Missing runtime archive: $archive"
-            exit 1
-          fi
-          entries="$(mktemp)"
-          tar -tzf "$archive" > "$entries"
-          grep -q "hermes-agent/runtime-build-manifest.json" "$entries"
-
       - name: Import Apple Developer certificate
         if: runner.os == 'macOS'
         shell: bash
@@ -197,6 +175,28 @@ jobs:
               exit 1
             fi
           fi
+
+      - name: Build bundled Hermes runtime (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: scripts/build-hermes-runtime.sh
+
+      - name: Build bundled Hermes runtime (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/build-hermes-runtime.ps1
+
+      - name: Verify bundled Hermes runtime
+        shell: bash
+        run: |
+          archive="src-tauri/resources/hermes-runtime/${{ matrix.runtimeArchive }}"
+          if [ ! -s "$archive" ]; then
+            echo "Missing runtime archive: $archive"
+            exit 1
+          fi
+          entries="$(mktemp)"
+          tar -tzf "$archive" > "$entries"
+          grep -q "hermes-agent/runtime-build-manifest.json" "$entries"
 
       - name: Check updater signing secret
         shell: bash

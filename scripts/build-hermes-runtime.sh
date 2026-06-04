@@ -91,6 +91,44 @@ remove_macos_metadata() {
     \)
 }
 
+sign_macos_native_code() {
+  local root="$1"
+  local identity="${APPLE_SIGNING_IDENTITY:-}"
+
+  if [ "$platform" != "darwin" ]; then
+    return
+  fi
+
+  if [ -z "$identity" ] || [ "$identity" = "-" ]; then
+    echo "Skipping macOS runtime native code signing (no Developer ID identity)."
+    return
+  fi
+
+  for command in file codesign; do
+    if ! command -v "$command" >/dev/null 2>&1; then
+      echo "Missing required command for macOS runtime signing: $command" >&2
+      exit 1
+    fi
+  done
+
+  echo "Signing macOS runtime native code..."
+  local signed_count=0
+  local candidate
+  local file_info
+
+  while IFS= read -r -d '' candidate; do
+    file_info="$(file -b "$candidate" || true)"
+    case "$file_info" in
+      *Mach-O*)
+        codesign --force --timestamp --options runtime --sign "$identity" "$candidate"
+        signed_count=$((signed_count + 1))
+        ;;
+    esac
+  done < <(find "$root" -type f -print0)
+
+  echo "Signed $signed_count macOS runtime native file(s)."
+}
+
 fake_bin="$build_root/fake-bin"
 home_dir="$build_root/home"
 hermes_home="$build_root/hermes-home"
@@ -389,6 +427,8 @@ if [ "$validate_runtime" = "1" ]; then
     exit 1
   fi
 fi
+
+sign_macos_native_code "$staged_agent"
 
 tmp_archive="$archive_path.tmp"
 rm -f "$tmp_archive" "$archive_path"
