@@ -108,7 +108,9 @@ jobs:
             echo "Missing runtime archive: $archive"
             exit 1
           fi
-          tar -tzf "$archive" | grep -q "hermes-agent/runtime-build-manifest.json"
+          entries="$(mktemp)"
+          tar -tzf "$archive" > "$entries"
+          grep -q "hermes-agent/runtime-build-manifest.json" "$entries"
 
       - name: Import Apple Developer certificate
         if: runner.os == 'macOS'
