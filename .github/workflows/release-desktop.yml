@@ -23,7 +23,7 @@ on:
     branches:
       - release
     tags:
-      - "ash-v*"
+      - "v*"
 
 permissions:
   contents: write
@@ -184,55 +184,6 @@ jobs:
             fi
           fi
 
-      - name: Import Windows code signing certificate
-        if: runner.os == 'Windows'
-        shell: pwsh
-        env:
-          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-          WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE)) {
-            Write-Host "No Windows certificate configured; Windows installers will not be Authenticode-signed."
-            exit 0
-          }
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
-            throw "Missing repository secret: WINDOWS_CERTIFICATE_PASSWORD"
-          }
-
-          New-Item -ItemType Directory -Force -Path certificate | Out-Null
-          Set-Content -Path certificate\certificate.base64.txt -Value $env:WINDOWS_CERTIFICATE
-          certutil -decode certificate\certificate.base64.txt certificate\certificate.pfx
-          if ($LASTEXITCODE -ne 0) {
-            throw "Failed to decode WINDOWS_CERTIFICATE."
-          }
-          Remove-Item -Force certificate\certificate.base64.txt
-
-          $password = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText
-          $cert = Import-PfxCertificate -FilePath certificate\certificate.pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password
-          if ($cert -is [array]) {
-            $cert = $cert | Select-Object -First 1
-          }
-          if (-not $cert.Thumbprint) {
-            throw "Windows certificate import did not return a thumbprint."
-          }
-
-          $timestampUrl = if ([string]::IsNullOrWhiteSpace($env:WINDOWS_TIMESTAMP_URL)) {
-            "http://timestamp.digicert.com"
-          } else {
-            $env:WINDOWS_TIMESTAMP_URL
-          }
-
-          @{
-            bundle = @{
-              windows = @{
-                certificateThumbprint = $cert.Thumbprint
-                digestAlgorithm = "sha256"
-                timestampUrl = $timestampUrl
-              }
-            }
-          } | ConvertTo-Json -Depth 10 | Set-Content -Path src-tauri\ci-signing.json -Encoding UTF8
-
       - name: Check updater signing secret
         shell: bash
         env:
@@ -256,7 +207,7 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
         with:
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'ash-v__VERSION__' }}
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
           releaseName: "Ash v__VERSION__"
           releaseBody: "Windows and macOS installers. Auto-update metadata is available as latest.json."
           releaseDraft: ${{ github.ref_type == 'tag' && 'false' || (github.event_name == 'workflow_dispatch' && inputs.draft || 'true') }}

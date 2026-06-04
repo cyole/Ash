@@ -1,8 +1,8 @@
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { useEffect, useState } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Clock3, Moon, PackageSearch, PenLine, Search, Settings, Sun } from "lucide-react";
-import { NavLink } from "react-router";
+import { ArrowLeft, ArrowRight, Clock3, Moon, PackageSearch, PenLine, Search, Settings, Sun } from "lucide-react";
+import { NavLink, useNavigate } from "react-router";
 import { ChatSessionsSidebar } from "@/features/chat/components/ChatSessionsSidebar";
 import type { ThemeMode } from "@/features/settings/settings-store";
 import { useAshSettings } from "@/features/settings/settings-store";
@@ -31,6 +31,8 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({ maxWidth, minWidth, onResizePointerDown, width }: AppSidebarProps) {
+  const navigate = useNavigate();
+
   return (
     <aside className="ash-sidebar-surface relative flex h-full w-[var(--ash-sidebar-width)] shrink-0 select-none flex-col overflow-hidden px-3 pb-3 pt-[calc(var(--ash-titlebar-height)+8px)] text-muted-foreground">
       <button
@@ -47,6 +49,18 @@ export function AppSidebar({ maxWidth, minWidth, onResizePointerDown, width }: A
         <span className="absolute inset-y-3 right-1/2 w-px translate-x-1/2 rounded-full bg-transparent transition-colors group-hover:bg-[var(--ash-sidebar-resize-hover)] group-active:bg-[var(--ash-sidebar-resize-active)]" />
       </button>
 
+      <div
+        className="absolute inset-x-0 top-0 flex h-[var(--ash-titlebar-height)] items-center justify-end gap-1 pr-4 text-muted-foreground/80"
+        data-tauri-drag-region="deep"
+      >
+        <SidebarNavigationButton label="返回" onClick={() => navigate(-1)}>
+          <ArrowLeft className="h-4 w-4" />
+        </SidebarNavigationButton>
+        <SidebarNavigationButton label="前进" onClick={() => navigate(1)}>
+          <ArrowRight className="h-4 w-4" />
+        </SidebarNavigationButton>
+      </div>
+
       <nav className="shrink-0 space-y-0.5" aria-label="快捷入口">
         {quickNav.map((item) => (
           <SidebarLink key={item.to} item={item} />
@@ -62,6 +76,28 @@ export function AppSidebar({ maxWidth, minWidth, onResizePointerDown, width }: A
         <ThemeModeToggleButton />
       </div>
     </aside>
+  );
+}
+
+function SidebarNavigationButton({
+  children,
+  label,
+  onClick,
+}: {
+  children: ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-[var(--ash-sidebar-control-hover)] hover:text-foreground"
+    >
+      {children}
+    </button>
   );
 }
 

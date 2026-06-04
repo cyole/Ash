@@ -75,17 +75,9 @@ APPLE_TEAM_ID
 the App Store Connect private key to a temporary file and exposes
 `APPLE_API_KEY_PATH` only inside the CI runner.
 
-Windows Authenticode signing uses a base64 encoded `.pfx` certificate:
-
-```txt
-WINDOWS_CERTIFICATE
-WINDOWS_CERTIFICATE_PASSWORD
-WINDOWS_TIMESTAMP_URL
-```
-
-`WINDOWS_TIMESTAMP_URL` is optional and defaults to
-`http://timestamp.digicert.com`. If `WINDOWS_CERTIFICATE` is missing, Windows
-installers are built without Authenticode signing.
+Windows Authenticode signing is currently disabled in CI. Windows installers
+are built without operating-system code signing until a Windows code signing
+certificate is added.
 
 ## Release Flow
 
@@ -100,8 +92,8 @@ installers are built without Authenticode signing.
 3. Create and push a version tag:
 
    ```bash
-   git tag ash-v0.1.0
-   git push origin ash-v0.1.0
+   git tag v0.1.0
+   git push origin v0.1.0
    ```
 
 Tag releases are published immediately so installed apps can read
