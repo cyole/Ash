@@ -47,6 +47,8 @@ import {
   themeModes,
   useHermesSettings,
 } from "@/features/settings/settings-store";
+import type { AppUpdateInfo, AppUpdateProgress } from "@/lib/app-updater";
+import { checkForAppUpdate, getCurrentAppVersion, installPendingAppUpdate } from "@/lib/app-updater";
 import type {
   AccentColor,
   AnimationMode,
@@ -746,9 +748,91 @@ function AboutSection({
   runtime?: HermesStatus;
   storage: HermesSettingsStorage;
 }) {
+  const tauriRuntime = useMemo(() => isTauriRuntime(), []);
+  const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
+  const [updateProgress, setUpdateProgress] = useState<AppUpdateProgress | null>(null);
+
+  const appVersion = useQuery({
+    queryKey: ["desktop-app-version"] as const,
+    queryFn: getCurrentAppVersion,
+  });
+
+  const checkUpdate = useMutation({
+    mutationFn: checkForAppUpdate,
+    onSuccess: (info) => {
+      setUpdateInfo(info);
+      setUpdateProgress(null);
+
+      if (info.available) {
+        toast.success(`发现 Hermes ${info.version}`);
+      } else {
+        toast.success("Hermes 已是最新版本");
+      }
+    },
+    onError: (error) => {
+      toast.error(`检查更新失败：${errorMessage(error)}`);
+    },
+  });
+
+  const installUpdate = useMutation({
+    mutationFn: () =>
+      installPendingAppUpdate((progress) => {
+        setUpdateProgress(progress);
+      }),
+    onMutate: () => {
+      setUpdateProgress({ downloaded: 0, percent: null, total: null });
+    },
+    onSuccess: () => {
+      toast.success("更新已安装，正在重启 Hermes");
+    },
+    onError: (error) => {
+      toast.error(`安装更新失败：${errorMessage(error)}`);
+    },
+  });
+
+  const desktopVersion = updateInfo?.currentVersion ?? appVersion.data ?? "浏览器预览";
+  const updateBusy = checkUpdate.isPending || installUpdate.isPending;
+
   return (
     <div className="space-y-6">
       <SettingsGroup title="Hermes Desktop">
+        <SettingsRow
+          label="桌面版本"
+          description="应用版本用于 GitHub Releases 和自动更新版本比较。"
+          action={<ValuePill value={desktopVersion} mono />}
+        />
+        <SettingsRow
+          label="应用更新"
+          description={appUpdateDescription({
+            info: updateInfo,
+            installing: installUpdate.isPending,
+            progress: updateProgress,
+            tauriRuntime,
+          })}
+          action={
+            <div className="flex flex-wrap justify-start gap-2 md:justify-end">
+              {updateInfo?.available ? (
+                <Button
+                  onClick={() => installUpdate.mutate()}
+                  disabled={!tauriRuntime || updateBusy}
+                  size="sm"
+                >
+                  {installUpdate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  安装更新
+                </Button>
+              ) : null}
+              <Button
+                onClick={() => checkUpdate.mutate()}
+                disabled={!tauriRuntime || updateBusy}
+                variant="outline"
+                size="sm"
+              >
+                {checkUpdate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+                检查更新
+              </Button>
+            </div>
+          }
+        />
         <SettingsRow
           label="聊天输入"
           description="聊天页使用 @lobehub/editor/react 的 ChatInput 与 Lexical Editor。"
@@ -783,6 +867,66 @@ function AboutSection({
       </SettingsGroup>
     </div>
   );
+}
+
+function appUpdateDescription({
+  info,
+  installing,
+  progress,
+  tauriRuntime,
+}: {
+  info: AppUpdateInfo | null;
+  installing: boolean;
+  progress: AppUpdateProgress | null;
+  tauriRuntime: boolean;
+}) {
+  if (!tauriRuntime) {
+    return "浏览器预览不能检查更新，请在 Hermes 桌面应用中使用。";
+  }
+
+  if (installing) {
+    return updateProgressText(progress);
+  }
+
+  if (info?.available) {
+    const notes = info.body ? `发布说明：${info.body}` : "安装后会自动重启 Hermes。";
+    return `发现新版本 ${info.version}。${notes}`;
+  }
+
+  if (info) {
+    return "已经是最新版本。";
+  }
+
+  return "从 GitHub Releases 检查 Windows 和 macOS 更新。";
+}
+
+function updateProgressText(progress: AppUpdateProgress | null) {
+  if (!progress) {
+    return "正在准备下载更新。";
+  }
+
+  if (progress.percent !== null) {
+    return `正在下载更新：${progress.percent}%`;
+  }
+
+  if (progress.downloaded > 0) {
+    return `正在下载更新：已下载 ${formatBytes(progress.downloaded)}`;
+  }
+
+  return "正在连接更新服务。";
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+
+  const kilobytes = bytes / 1024;
+  if (kilobytes < 1024) {
+    return `${kilobytes.toFixed(1)} KB`;
+  }
+
+  return `${(kilobytes / 1024).toFixed(1)} MB`;
 }
 
 function SettingsGroup({ children, title }: { children: ReactNode; title: string }) {

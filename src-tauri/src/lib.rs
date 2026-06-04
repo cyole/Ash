@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Manager;
 use tauri_plugin_log::log::LevelFilter;
 
-static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
+pub(crate) static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
 
 fn stop_runtime_and_exit(app: tauri::AppHandle) {
     tauri::async_runtime::spawn_blocking(move || {
@@ -43,6 +43,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             commands::runtime::start_runtime_on_startup(app.handle().clone());
             Ok(())
@@ -59,6 +60,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            commands::app::app_restart,
             commands::runtime::runtime_status,
             commands::runtime::runtime_prepare,
             commands::runtime::runtime_dashboard_start,

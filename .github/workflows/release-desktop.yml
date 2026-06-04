@@ -1,0 +1,267 @@
+name: Release Desktop
+
+on:
+  workflow_dispatch:
+    inputs:
+      draft:
+        description: "Create the GitHub release as a draft"
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      prerelease:
+        description: "Mark the GitHub release as a prerelease"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+  push:
+    branches:
+      - release
+    tags:
+      - "hermes-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: "macOS arm64"
+            platform: macos-15
+            args: "--target aarch64-apple-darwin"
+            rustTargets: "aarch64-apple-darwin"
+            runtimeArchive: "hermes-runtime-darwin-arm64.tar.gz"
+          - name: "macOS x64"
+            platform: macos-15-intel
+            args: "--target x86_64-apple-darwin"
+            rustTargets: "x86_64-apple-darwin"
+            runtimeArchive: "hermes-runtime-darwin-x64.tar.gz"
+          - name: "Windows x64"
+            platform: windows-2025
+            args: ""
+            rustTargets: ""
+            runtimeArchive: "hermes-runtime-windows-x64.tar.gz"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+
+      - name: Install Rust stable
+        if: matrix.rustTargets == ''
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Rust stable with target
+        if: matrix.rustTargets != ''
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rustTargets }}
+
+      - name: Cache Rust artifacts
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+          cache-on-failure: true
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Initialize CI signing config
+        shell: bash
+        run: printf '{}\n' > src-tauri/ci-signing.json
+
+      - name: Build bundled Hermes runtime (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: scripts/build-hermes-runtime.sh
+
+      - name: Build bundled Hermes runtime (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/build-hermes-runtime.ps1
+
+      - name: Verify bundled Hermes runtime
+        shell: bash
+        run: |
+          archive="src-tauri/resources/hermes-runtime/${{ matrix.runtimeArchive }}"
+          if [ ! -s "$archive" ]; then
+            echo "Missing runtime archive: $archive"
+            exit 1
+          fi
+          tar -tzf "$archive" | grep -q "hermes-agent/runtime-build-manifest.json"
+
+      - name: Import Apple Developer certificate
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: |
+          if [ -z "${APPLE_CERTIFICATE:-}" ]; then
+            echo "No Apple certificate configured; using ad-hoc macOS signing."
+            echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          for name in APPLE_CERTIFICATE_PASSWORD KEYCHAIN_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing repository secret: $name"
+              exit 1
+            fi
+          done
+
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/apple-certificate.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          security import "$RUNNER_TEMP/apple-certificate.p12" \
+            -k build.keychain \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/productsign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+
+          cert_info="$(security find-identity -v -p codesigning build.keychain | grep -E '\"(Developer ID Application|Apple Distribution|Apple Development):' | head -1 || true)"
+          if [ -z "$cert_info" ]; then
+            echo "No valid Apple code signing identity found in imported certificate."
+            security find-identity -v -p codesigning build.keychain || true
+            exit 1
+          fi
+          cert_id="$(printf '%s\n' "$cert_info" | awk -F'"' '{print $2}')"
+          echo "APPLE_SIGNING_IDENTITY=$cert_id" >> "$GITHUB_ENV"
+
+          if [ -n "${APPLE_API_PRIVATE_KEY:-}" ]; then
+            if [ -z "${APPLE_API_KEY:-}" ] || [ -z "${APPLE_API_ISSUER:-}" ]; then
+              echo "APPLE_API_PRIVATE_KEY requires APPLE_API_KEY and APPLE_API_ISSUER."
+              exit 1
+            fi
+            api_key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
+            printf '%s' "$APPLE_API_PRIVATE_KEY" > "$api_key_path"
+            echo "APPLE_API_KEY_PATH=$api_key_path" >> "$GITHUB_ENV"
+          fi
+
+          if printf '%s' "$cert_id" | grep -q '^Developer ID Application:'; then
+            has_api_notary=0
+            has_apple_id_notary=0
+            if [ -n "${APPLE_API_PRIVATE_KEY:-}" ] && [ -n "${APPLE_API_KEY:-}" ] && [ -n "${APPLE_API_ISSUER:-}" ]; then
+              has_api_notary=1
+            fi
+            if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
+              has_apple_id_notary=1
+            fi
+            if [ "$has_api_notary" != "1" ] && [ "$has_apple_id_notary" != "1" ]; then
+              echo "Developer ID signing requires notarization credentials."
+              echo "Set APPLE_API_ISSUER, APPLE_API_KEY, APPLE_API_PRIVATE_KEY or APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID."
+              exit 1
+            fi
+          fi
+
+      - name: Import Windows code signing certificate
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE)) {
+            Write-Host "No Windows certificate configured; Windows installers will not be Authenticode-signed."
+            exit 0
+          }
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
+            throw "Missing repository secret: WINDOWS_CERTIFICATE_PASSWORD"
+          }
+
+          New-Item -ItemType Directory -Force -Path certificate | Out-Null
+          Set-Content -Path certificate\certificate.base64.txt -Value $env:WINDOWS_CERTIFICATE
+          certutil -decode certificate\certificate.base64.txt certificate\certificate.pfx
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to decode WINDOWS_CERTIFICATE."
+          }
+          Remove-Item -Force certificate\certificate.base64.txt
+
+          $password = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText
+          $cert = Import-PfxCertificate -FilePath certificate\certificate.pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password
+          if ($cert -is [array]) {
+            $cert = $cert | Select-Object -First 1
+          }
+          if (-not $cert.Thumbprint) {
+            throw "Windows certificate import did not return a thumbprint."
+          }
+
+          $timestampUrl = if ([string]::IsNullOrWhiteSpace($env:WINDOWS_TIMESTAMP_URL)) {
+            "http://timestamp.digicert.com"
+          } else {
+            $env:WINDOWS_TIMESTAMP_URL
+          }
+
+          @{
+            bundle = @{
+              windows = @{
+                certificateThumbprint = $cert.Thumbprint
+                digestAlgorithm = "sha256"
+                timestampUrl = $timestampUrl
+              }
+            }
+          } | ConvertTo-Json -Depth 10 | Set-Content -Path src-tauri\ci-signing.json -Encoding UTF8
+
+      - name: Check updater signing secret
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+            echo "Missing repository secret: TAURI_SIGNING_PRIVATE_KEY"
+            echo "Set it to the contents of the updater private key before publishing a release."
+            exit 1
+          fi
+
+      - name: Build and upload Tauri release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        with:
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'hermes-v__VERSION__' }}
+          releaseName: "Hermes v__VERSION__"
+          releaseBody: "Windows and macOS installers. Auto-update metadata is available as latest.json."
+          releaseDraft: ${{ github.ref_type == 'tag' && 'false' || (github.event_name == 'workflow_dispatch' && inputs.draft || 'true') }}
+          prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || 'false' }}
+          uploadUpdaterJson: true
+          uploadUpdaterSignatures: true
+          updaterJsonPreferNsis: true
+          args: ${{ matrix.args }} --config src-tauri/ci-signing.json

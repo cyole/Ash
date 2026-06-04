@@ -17,6 +17,10 @@ src-tauri/resources/hermes-runtime/*.zip
 src-tauri/resources/hermes-runtime/hermes-agent/
 !src-tauri/resources/hermes-runtime/README.md
 
+# CI-only signing material/config generated from GitHub Secrets
+certificate/
+src-tauri/ci-signing.json
+
 # Logs
 *.log
 npm-debug.log*

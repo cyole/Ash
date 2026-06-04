@@ -6,6 +6,12 @@ Generate platform runtime archives here before building the Tauri app:
 scripts/build-hermes-runtime.sh
 ```
 
+On Windows:
+
+```powershell
+./scripts/build-hermes-runtime.ps1
+```
+
 The generated archives are ignored by git and should not be committed.
 
 The default script output is a minimal desktop runtime: core Hermes CLI,

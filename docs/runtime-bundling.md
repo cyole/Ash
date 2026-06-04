@@ -141,6 +141,12 @@ Generate the current platform runtime archive with:
 scripts/build-hermes-runtime.sh
 ```
 
+On Windows, use PowerShell:
+
+```powershell
+./scripts/build-hermes-runtime.ps1
+```
+
 By default the script builds a minimal desktop runtime from the pinned Hermes
 Agent tag used by this app. It skips Node/browser tool installation and
 prunes development-only content such as `.git`, tests, website/web source, TUI
@@ -159,9 +165,14 @@ HERMES_RUNTIME_PRUNE=0 scripts/build-hermes-runtime.sh
 HERMES_RUNTIME_VALIDATE=0 scripts/build-hermes-runtime.sh
 ```
 
-The script uses the official Hermes installer as a build-time tool in a
-temporary directory, rewrites the generated Python environment so it can be
-relocated after Tauri unpacks it, and writes the archive under
+The PowerShell script accepts the same release pinning variables through the
+environment, including `HERMES_AGENT_REF`, `HERMES_AGENT_COMMIT`,
+`HERMES_RUNTIME_KEEP_BUILD`, `HERMES_RUNTIME_OUT_DIR`, and
+`HERMES_RUNTIME_VALIDATE`.
+
+The scripts use the official Hermes installer as a build-time tool in a
+temporary directory, rewrite the generated Python environment so it can be
+relocated after Tauri unpacks it, and write the archive under
 `src-tauri/resources/hermes-runtime/`.
 
 The default `HERMES_AGENT_REF` should be a Hermes release tag such as
