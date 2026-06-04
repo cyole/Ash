@@ -53,11 +53,9 @@ import type {
   ThemeMode,
 } from "@/features/settings/settings-store";
 import { errorMessage } from "@/lib/errors";
-import { hermesQueryKeys } from "@/lib/hermes/queries";
+import { hermesQueryKeys, useHermesApi } from "@/lib/hermes/queries";
 import {
   checkDashboard,
-  getModelConfigStatus,
-  getRuntimeStatus,
   isTauriRuntime,
   prepareRuntime,
   revealRuntimeLogs,
@@ -67,7 +65,8 @@ import {
   stopDashboard,
 } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
-import type { HermesStatus, ModelConfigStatus, RuntimeCommandResult } from "@/types/hermes";
+import type { ModelInfoResponse } from "@/types/hermes-dashboard";
+import type { HermesStatus, RuntimeCommandResult } from "@/types/hermes";
 
 type RuntimeAction = "prepare" | "start" | "stop" | "status" | "doctor" | "portal" | "logs";
 type SettingsSectionId = "appearance" | "chat" | "model" | "runtime" | "advanced" | "about";
@@ -203,16 +202,12 @@ export function SettingsPage() {
   const [lastAction, setLastAction] = useState<RuntimeAction | null>(null);
   const tauriRuntime = useMemo(() => isTauriRuntime(), []);
   const developerToolsEnabled = useMemo(() => isDeveloperToolsEnabled(), []);
+  const { apiReady, apiUrl, client, sessionToken, status } = useHermesApi();
 
-  const status = useQuery({
-    queryKey: hermesQueryKeys.runtimeStatus,
-    queryFn: getRuntimeStatus,
-    refetchInterval: 15_000,
-  });
-
-  const modelStatus = useQuery({
-    queryKey: hermesQueryKeys.modelConfigStatus,
-    queryFn: getModelConfigStatus,
+  const modelInfo = useQuery({
+    enabled: apiReady,
+    queryKey: ["settings-model-info", apiUrl, Boolean(sessionToken)] as const,
+    queryFn: () => client.getGlobalModelInfo(),
   });
 
   const runAction = useMutation({
@@ -261,11 +256,11 @@ export function SettingsPage() {
   const activeSectionConfig = settingsSections.find((section) => section.id === activeSection) ?? settingsSections[0]!;
   const busy = runAction.isPending;
   const ready = Boolean(runtime?.installed);
-  const refreshing = status.isFetching || modelStatus.isFetching;
+  const refreshing = status.isFetching || modelInfo.isFetching;
 
   function refresh() {
     void status.refetch();
-    void modelStatus.refetch();
+    void modelInfo.refetch();
   }
 
   return (
@@ -333,7 +328,7 @@ export function SettingsPage() {
             {activeSection === "appearance" ? <AppearanceSection /> : null}
             {activeSection === "chat" ? <ChatAppearanceSection /> : null}
             {activeSection === "model" ? (
-              <ModelSection modelStatus={modelStatus.data} loading={modelStatus.isLoading} error={modelStatus.error} />
+              <ModelSection modelInfo={modelInfo.data} loading={modelInfo.isLoading} error={modelInfo.error} />
             ) : null}
             {activeSection === "runtime" ? (
               <RuntimeSection
@@ -358,7 +353,7 @@ export function SettingsPage() {
               />
             ) : null}
             {activeSection === "about" ? (
-              <AboutSection runtime={runtime} modelStatus={modelStatus.data} storage={storage} />
+              <AboutSection runtime={runtime} modelInfo={modelInfo.data} storage={storage} />
             ) : null}
           </div>
         </div>
@@ -496,43 +491,41 @@ function ChatAppearanceSection() {
 function ModelSection({
   error,
   loading,
-  modelStatus,
+  modelInfo,
 }: {
   error: unknown;
   loading: boolean;
-  modelStatus?: ModelConfigStatus;
+  modelInfo?: ModelInfoResponse;
 }) {
+  const configured = Boolean(modelInfo?.provider && modelInfo.model);
+
   return (
     <div className="space-y-6">
       <SettingsGroup title="默认模型">
         <SettingsRow
           label="配置状态"
-          description="保存后本地服务会读取 app-managed config 中的 provider 配置。"
-          action={<ModelStatusBadge configured={modelStatus?.configured} loading={loading} />}
+          description="来自 Hermes dashboard /api/model/info。"
+          action={<ModelStatusBadge configured={configured} loading={loading} />}
         />
         <SettingsRow
           label="提供商"
-          description={modelStatus?.providerKey ?? "尚未写入 provider key。"}
-          action={<ValuePill value={modelStatus?.name ?? "未配置"} />}
-        />
-        <SettingsRow
-          label="服务地址"
-          description={modelStatus?.baseUrl ?? "配置 OpenAI 兼容服务地址后会显示在这里。"}
-          action={<ValuePill value={modelStatus?.baseUrl ?? "未配置"} mono />}
+          description={modelInfo?.provider ?? "尚未返回 provider。"}
+          action={<ValuePill value={modelInfo?.provider ?? "未配置"} />}
         />
         <SettingsRow
           label="默认模型"
-          description={modelStatus?.model ?? "还没有默认模型。"}
-          action={<ValuePill value={modelStatus?.model ?? "未配置"} mono />}
+          description={modelInfo?.model ?? "还没有默认模型。"}
+          action={<ValuePill value={modelInfo?.model ?? "未配置"} mono />}
         />
         <SettingsRow
-          label="Provider Key"
-          description="密钥只保存在本地运行时配置中，设置页不会显示明文。"
-          action={
-            <StatusPill tone={modelStatus?.hasApiKey ? "success" : "warning"}>
-              {modelStatus?.hasApiKey ? "已保存" : "需要设置"}
-            </StatusPill>
-          }
+          label="有效上下文"
+          description="dashboard 合并模型能力和配置后的上下文长度。"
+          action={<ValuePill value={formatSettingsNumber(modelInfo?.effective_context_length)} mono />}
+        />
+        <SettingsRow
+          label="配置上下文"
+          description="如果用户显式设置过 context length，会显示在这里。"
+          action={<ValuePill value={formatSettingsNumber(modelInfo?.config_context_length)} mono />}
         />
         {error ? (
           <SettingsRow
@@ -770,11 +763,11 @@ function AdvancedSection({
 }
 
 function AboutSection({
-  modelStatus,
+  modelInfo,
   runtime,
   storage,
 }: {
-  modelStatus?: ModelConfigStatus;
+  modelInfo?: ModelInfoResponse;
   runtime?: HermesStatus;
   storage: HermesSettingsStorage;
 }) {
@@ -798,8 +791,8 @@ function AboutSection({
         />
         <SettingsRow
           label="默认模型"
-          description={modelStatus?.configured ? "已连接 OpenAI 兼容提供商。" : "还没有保存默认模型配置。"}
-          action={<ValuePill value={modelStatus?.model ?? "未配置"} mono />}
+          description={modelInfo?.provider ? `Provider: ${modelInfo.provider}` : "dashboard 还没有返回模型信息。"}
+          action={<ValuePill value={modelInfo?.model ?? "未配置"} mono />}
         />
         <SettingsRow
           label="偏好设置"
@@ -1296,6 +1289,10 @@ function LogPreview({ lines }: { lines: string[] }) {
       </pre>
     </div>
   );
+}
+
+function formatSettingsNumber(value: number | undefined) {
+  return typeof value === "number" && Number.isFinite(value) ? value.toLocaleString() : "未设置";
 }
 
 function runtimeSummary(runtime?: HermesStatus) {

@@ -4,9 +4,6 @@ import type { HermesStreamEvent, SessionChatInput } from "@/lib/hermes/types";
 import type {
   HermesExtensionsCatalog,
   HermesStatus,
-  ModelConfigStatus,
-  OpenAICompatibleModelConfig,
-  OpenAIModelsResult,
   RuntimeCommandResult,
   RuntimeConnection,
   RuntimeDashboardApiInput,
@@ -40,10 +37,16 @@ interface JsonRpcResponse<T> {
 }
 
 interface TuiSessionResult {
+  info?: unknown;
   message_count?: number;
   messages?: unknown[];
   session_id?: string;
   stored_session_id?: string;
+}
+
+interface ResolvedTuiSession {
+  sessionId: string;
+  storedSessionId: string;
 }
 
 const defaultDashboardUrl = "http://127.0.0.1:9120";
@@ -173,80 +176,28 @@ export async function getExtensionsCatalog(): Promise<HermesExtensionsCatalog> {
   return invoke<HermesExtensionsCatalog>("runtime_extensions_catalog");
 }
 
-export async function getModelConfigStatus(): Promise<ModelConfigStatus> {
-  if (!isTauriRuntime()) {
-    return {
-      configured: false,
-      providerKey: null,
-      name: null,
-      baseUrl: null,
-      model: null,
-      hasApiKey: false,
-      configPath: "打开 Tauri 应用后可查看模型配置路径。",
-    };
-  }
-
-  return invoke<ModelConfigStatus>("model_config_status");
-}
-
-export async function saveOpenAICompatibleModelConfig(
-  input: OpenAICompatibleModelConfig,
-): Promise<ModelConfigStatus> {
-  if (!isTauriRuntime()) {
-    throw new Error("模型配置保存仅在 Tauri 桌面应用中可用。");
-  }
-
-  return invoke<ModelConfigStatus>("model_config_save_openai", { input });
-}
-
-export async function fetchOpenAICompatibleModels(
-  input: Pick<OpenAICompatibleModelConfig, "baseUrl" | "apiKey">,
-): Promise<OpenAIModelsResult> {
-  if (isTauriRuntime()) {
-    return invoke<OpenAIModelsResult>("model_config_fetch_openai_models", { input });
-  }
-
-  const baseUrl = normalizeOpenAIBaseUrl(input.baseUrl);
-  const apiKey = input.apiKey.trim();
-
-  if (!apiKey) {
-    throw new Error("请输入 API Key。");
-  }
-
-  const modelsUrl = openAIModelsUrl(baseUrl);
-  const response = await fetch(modelsUrl, {
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(body.trim() || `模型服务返回 HTTP ${response.status}。`);
-  }
-
-  const payload = await response.json() as { data?: Array<{ id?: unknown }> };
-  const models = [...new Set((payload.data ?? [])
-    .map((model) => typeof model.id === "string" ? model.id.trim() : "")
-    .filter(Boolean))]
-    .sort();
-
-  if (models.length === 0) {
-    throw new Error("模型服务响应中没有 data[].id。");
-  }
-
-  return { models, modelsUrl };
-}
-
-export async function createHermesTuiSession(title: string): Promise<HermesTuiSession> {
+export async function createHermesTuiSession(title?: string): Promise<HermesTuiSession> {
   const rpc = await TuiRpcConnection.connect();
   try {
     const result = await rpc.request<TuiSessionResult>("session.create", {
-      cols: 100,
-      title,
+      cols: 96,
+      ...(title?.trim() ? { title: title.trim() } : {}),
     });
     return normalizeTuiSessionResult(result);
+  } finally {
+    rpc.close();
+  }
+}
+
+export async function interruptHermesSession(runtimeSessionId: string): Promise<void> {
+  const sessionId = runtimeSessionId.trim();
+  if (!sessionId) {
+    return;
+  }
+
+  const rpc = await TuiRpcConnection.connect();
+  try {
+    await rpc.request("session.interrupt", { session_id: sessionId });
   } finally {
     rpc.close();
   }
@@ -264,7 +215,9 @@ export async function* streamHermesSessionChat(input: SessionChatInput): AsyncIt
 
   const rpc = await TuiRpcConnection.connect(input.signal);
   try {
-    const sessionId = await resolveTransientSessionId(rpc, input);
+    const session = await resolveTransientSession(rpc, input);
+    const sessionId = session.sessionId;
+    input.onRuntimeSession?.(session.sessionId, session.storedSessionId);
     await rpc.request("prompt.submit", {
       session_id: sessionId,
       text,
@@ -287,6 +240,7 @@ export async function* streamHermesSessionChat(input: SessionChatInput): AsyncIt
       yield {
         type: event.type,
         data: event.payload,
+        sessionId: event.sessionId ?? sessionId,
       };
 
       if (event.type === "message.complete" || event.type === "error") {
@@ -298,27 +252,38 @@ export async function* streamHermesSessionChat(input: SessionChatInput): AsyncIt
   }
 }
 
-async function resolveTransientSessionId(
+async function resolveTransientSession(
   rpc: TuiRpcConnection,
   input: SessionChatInput,
-) {
+): Promise<ResolvedTuiSession> {
   if (input.transientSessionId) {
-    return input.transientSessionId;
+    return {
+      sessionId: input.transientSessionId,
+      storedSessionId: input.sessionId ?? input.transientSessionId,
+    };
   }
 
   if (input.sessionId) {
     const result = await rpc.request<TuiSessionResult>("session.resume", {
-      cols: 100,
+      cols: 96,
       session_id: input.sessionId,
     });
-    return normalizeTuiSessionResult(result).sessionId;
+    const session = normalizeTuiSessionResult(result);
+    return {
+      sessionId: session.sessionId,
+      storedSessionId: input.sessionId,
+    };
   }
 
   const result = await rpc.request<TuiSessionResult>("session.create", {
-    cols: 100,
-    title: input.title,
+    cols: 96,
+    ...(input.title?.trim() ? { title: input.title.trim() } : {}),
   });
-  return normalizeTuiSessionResult(result).sessionId;
+  const session = normalizeTuiSessionResult(result);
+  return {
+    sessionId: session.sessionId,
+    storedSessionId: session.storedSessionId,
+  };
 }
 
 function normalizeTuiSessionResult(result: TuiSessionResult): HermesTuiSession {
@@ -543,25 +508,6 @@ function waitForSocketOpen(socket: WebSocket, signal?: AbortSignal) {
 
 function abortError() {
   return new DOMException("The operation was aborted.", "AbortError");
-}
-
-function normalizeOpenAIBaseUrl(input: string) {
-  const baseUrl = input.trim().replace(/\/+$/, "");
-
-  if (!baseUrl) {
-    throw new Error("请输入服务地址。");
-  }
-
-  if (!/^https?:\/\//.test(baseUrl)) {
-    throw new Error("服务地址需要以 http:// 或 https:// 开头。");
-  }
-
-  return baseUrl;
-}
-
-function openAIModelsUrl(baseUrl: string) {
-  const lastSegment = baseUrl.split("/").filter(Boolean).at(-1) ?? "";
-  return /^v\d+$/.test(lastSegment) ? `${baseUrl}/models` : `${baseUrl}/v1/models`;
 }
 
 function isRecord(value: unknown): value is Record<PropertyKey, unknown> {

@@ -51,6 +51,7 @@ pub struct RuntimeDashboardApiInput {
     pub(crate) path: String,
     pub(crate) method: Option<String>,
     pub(crate) body: Option<serde_json::Value>,
+    pub(crate) timeout_ms: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -1,7 +1,10 @@
+import type { ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
   CircleAlert,
+  Cpu,
   KeyRound,
   Loader2,
   RefreshCcw,
@@ -10,293 +13,332 @@ import {
   Server,
   Sparkles,
 } from "lucide-react";
-import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { errorMessage } from "@/lib/errors";
-import { hermesQueryKeys } from "@/lib/hermes/queries";
 import {
-  fetchOpenAICompatibleModels,
-  getModelConfigStatus,
-  getRuntimeStatus,
-  isTauriRuntime,
-  restartDashboard,
-  saveOpenAICompatibleModelConfig,
-} from "@/lib/tauri";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { errorMessage } from "@/lib/errors";
+import { hermesQueryKeys, useHermesApi } from "@/lib/hermes/queries";
 import { cn } from "@/lib/utils";
-import type { OpenAICompatibleModelConfig } from "@/types/hermes";
+import type {
+  AuxiliaryModelsResponse,
+  EnvVarInfo,
+  ModelInfoResponse,
+  ModelOptionsResponse,
+} from "@/types/hermes-dashboard";
 
-const DEFAULT_PROVIDER_NAME = "openai-compatible";
-const DEFAULT_BASE_URL = "https://api.openai.com/v1";
-const DEFAULT_MODEL = "gpt-4o-mini";
+interface ModelSettingsData {
+  auxiliary: AuxiliaryModelsResponse | null;
+  env: Record<string, EnvVarInfo>;
+  info: ModelInfoResponse;
+  options: ModelOptionsResponse;
+}
+
+const AUXILIARY_TASK_LABELS: Record<string, string> = {
+  approval: "Approval",
+  compression: "Compression",
+  curator: "Curator",
+  mcp: "MCP",
+  session_search: "Session search",
+  skills_hub: "Skills hub",
+  title_generation: "Title generation",
+  vision: "Vision",
+  web_extract: "Web extract",
+};
 
 export function ModelsPage() {
   const queryClient = useQueryClient();
-  const tauriRuntime = useMemo(() => isTauriRuntime(), []);
-  const [name, setName] = useState(DEFAULT_PROVIDER_NAME);
-  const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL);
-  const [apiKey, setApiKey] = useState("");
-  const [model, setModel] = useState(DEFAULT_MODEL);
-  const [contextLength, setContextLength] = useState("");
+  const { apiReady, apiUrl, client, sessionToken, status } = useHermesApi();
+  const [selectedProvider, setSelectedProvider] = useState("");
+  const [selectedModel, setSelectedModel] = useState("");
+  const [credentialKey, setCredentialKey] = useState("");
+  const [credentialValue, setCredentialValue] = useState("");
   const [hydrated, setHydrated] = useState(false);
-  const [availableModels, setAvailableModels] = useState<string[]>([]);
-  const [modelsUrl, setModelsUrl] = useState("");
 
-  const status = useQuery({
-    queryKey: hermesQueryKeys.modelConfigStatus,
-    queryFn: getModelConfigStatus,
+  const modelSettings = useQuery({
+    enabled: apiReady,
+    queryKey: hermesQueryKeys.modelSettings(apiUrl, Boolean(sessionToken)),
+    queryFn: async (): Promise<ModelSettingsData> => {
+      const [info, options, auxiliary, env] = await Promise.all([
+        client.getGlobalModelInfo(),
+        client.getGlobalModelOptions(),
+        client.getAuxiliaryModels().catch(() => null),
+        client.getEnvVars(),
+      ]);
+
+      return { auxiliary, env, info, options };
+    },
   });
 
-  const runtime = useQuery({
-    queryKey: hermesQueryKeys.runtimeStatus,
-    queryFn: getRuntimeStatus,
-    refetchInterval: 15_000,
-  });
+  const providers = modelSettings.data?.options.providers ?? [];
+  const currentInfo = modelSettings.data?.info;
+  const envVars = modelSettings.data?.env ?? {};
+  const credentialEntries = useMemo(() => modelCredentialEntries(envVars), [envVars]);
+  const selectedProviderModels = useMemo(
+    () => providers.find((provider) => provider.slug === selectedProvider)?.models ?? [],
+    [providers, selectedProvider],
+  );
 
   useEffect(() => {
-    if (!status.data || hydrated) {
+    if (!modelSettings.data || hydrated) {
       return;
     }
 
-    setName(status.data.name ?? DEFAULT_PROVIDER_NAME);
-    setBaseUrl(status.data.baseUrl ?? DEFAULT_BASE_URL);
-    setModel(status.data.model ?? DEFAULT_MODEL);
+    setSelectedProvider(modelSettings.data.info.provider);
+    setSelectedModel(modelSettings.data.info.model);
+    setCredentialKey(credentialEntries[0]?.[0] ?? "");
     setHydrated(true);
-  }, [hydrated, status.data]);
+  }, [credentialEntries, hydrated, modelSettings.data]);
 
-  const fetchModels = useMutation({
-    mutationFn: () => fetchOpenAICompatibleModels({ baseUrl, apiKey }),
-    onSuccess: (result) => {
-      setAvailableModels(result.models);
-      setModelsUrl(result.modelsUrl);
-      if (!model.trim() && result.models[0]) {
-        setModel(result.models[0]);
+  const refresh = () =>
+    queryClient.invalidateQueries({
+      queryKey: hermesQueryKeys.modelSettings(apiUrl, Boolean(sessionToken)),
+    });
+
+  const applyMainModel = useMutation({
+    mutationFn: async () => {
+      if (!selectedProvider || !selectedModel) {
+        throw new Error("请选择 provider 和模型。");
       }
-      toast.success(`已获取 ${result.models.length} 个模型`);
+
+      return client.setModelAssignment({
+        scope: "main",
+        provider: selectedProvider,
+        model: selectedModel,
+      });
     },
-    onError: (error) => {
-      toast.error(errorMessage(error));
+    onSuccess: () => {
+      void refresh();
+      void queryClient.invalidateQueries({ queryKey: hermesQueryKeys.models(apiUrl, Boolean(sessionToken)) });
+      toast.success("主模型已更新");
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
-  const saveConfig = useMutation({
-    mutationFn: () => saveOpenAICompatibleModelConfig(buildConfig()),
-    onSuccess: (nextStatus) => {
-      queryClient.setQueryData(hermesQueryKeys.modelConfigStatus, nextStatus);
-      void queryClient.invalidateQueries({ queryKey: hermesQueryKeys.runtimeStatus });
-      toast.success("模型配置已保存");
-    },
-    onError: (error) => {
-      toast.error(errorMessage(error));
-    },
-  });
-
-  const restart = useMutation({
-    mutationFn: restartDashboard,
-    onSuccess: (result) => {
-      void queryClient.invalidateQueries({ queryKey: hermesQueryKeys.runtimeStatus });
-      if (result.success) {
-        toast.success("本地服务已重启");
-      } else {
-        toast.error(result.stderr || result.stdout || "本地服务重启需要处理");
+  const saveCredential = useMutation({
+    mutationFn: async () => {
+      const key = credentialKey.trim();
+      const value = credentialValue.trim();
+      if (!key || !value) {
+        throw new Error("请选择凭证并输入值。");
       }
+
+      await client.validateProviderCredential(key, value);
+      return client.setEnvVar(key, value);
     },
-    onError: (error) => {
-      toast.error(errorMessage(error));
+    onSuccess: () => {
+      setCredentialValue("");
+      void refresh();
+      toast.success("凭证已保存");
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
-  const current = status.data;
-  const canFetch = Boolean(baseUrl.trim() && apiKey.trim() && !fetchModels.isPending);
-  const canSave = Boolean(
-    tauriRuntime
-    && name.trim()
-    && baseUrl.trim()
-    && apiKey.trim()
-    && model.trim()
-    && !saveConfig.isPending,
-  );
+  const restartGateway = useMutation({
+    mutationFn: () => client.restartGateway(),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: hermesQueryKeys.runtimeStatus });
+      toast.success("Gateway 已重启");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
 
-  function buildConfig(): OpenAICompatibleModelConfig {
-    return {
-      name: name.trim(),
-      baseUrl: baseUrl.trim(),
-      apiKey: apiKey.trim(),
-      model: model.trim(),
-      contextLength: parseContextLength(contextLength),
-    };
-  }
+  const resetAuxiliary = useMutation({
+    mutationFn: async () => {
+      if (!currentInfo) {
+        throw new Error("当前主模型还没有加载。");
+      }
+
+      return client.setModelAssignment({
+        scope: "auxiliary",
+        task: "__reset__",
+        provider: currentInfo.provider,
+        model: currentInfo.model,
+      });
+    },
+    onSuccess: () => {
+      void refresh();
+      toast.success("辅助模型已重置");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const loading = modelSettings.isLoading && !modelSettings.data;
+  const canApply = Boolean(selectedProvider && selectedModel && !applyMainModel.isPending);
+  const canSaveCredential = Boolean(credentialKey && credentialValue.trim() && !saveCredential.isPending);
 
   return (
     <div>
       <PageHeader
         eyebrow="模型服务"
         title="模型"
-        description="配置 OpenAI 兼容提供商，作为 Hermes 的默认模型。"
+        description="使用 Hermes dashboard 的官方模型与凭证 API。"
         actions={
           <>
             <Button
               variant="outline"
-              onClick={() => status.refetch()}
-              disabled={status.isFetching}
+              onClick={() => void modelSettings.refetch()}
+              disabled={modelSettings.isFetching}
             >
-              <RefreshCcw className="h-4 w-4" />
+              {modelSettings.isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
               刷新
             </Button>
             <Button
               variant="outline"
-              onClick={() => restart.mutate()}
-              disabled={!tauriRuntime || !runtime.data?.installed || restart.isPending}
+              onClick={() => restartGateway.mutate()}
+              disabled={!apiReady || !status.data?.dashboardRunning || restartGateway.isPending}
             >
-              {restart.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-              重启本地服务
+              {restartGateway.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+              重启 Gateway
             </Button>
           </>
         }
       />
 
       <div className="grid gap-4 p-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <section className="rounded-lg border border-border">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-            <div>
-              <h2 className="text-sm font-medium">OpenAI 兼容配置</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                当前写入 Hermes 的 custom provider 配置。
-              </p>
-            </div>
-            <ProviderStatusBadge configured={current?.configured} loading={status.isLoading} />
-          </div>
-
-          <div className="grid gap-4 p-4 md:grid-cols-2">
-            <ModelConfigField label="配置名称" htmlFor="model-config-name">
-              <Input
-                id="model-config-name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder={DEFAULT_PROVIDER_NAME}
-                autoComplete="off"
-              />
-            </ModelConfigField>
-            <ModelConfigField label="服务地址" htmlFor="model-config-base-url">
-              <Input
-                id="model-config-base-url"
-                value={baseUrl}
-                onChange={(event) => setBaseUrl(event.target.value)}
-                placeholder={DEFAULT_BASE_URL}
-                autoComplete="off"
-              />
-            </ModelConfigField>
-            <ModelConfigField label="API Key" htmlFor="model-config-api-key">
-              <Input
-                id="model-config-api-key"
-                type="password"
-                value={apiKey}
-                onChange={(event) => setApiKey(event.target.value)}
-                placeholder={current?.hasApiKey ? "已保存，重新保存时需要再次输入" : "sk-..."}
-                autoComplete="off"
-              />
-            </ModelConfigField>
-            <ModelConfigField label="默认模型" htmlFor="model-config-model">
-              <Input
-                id="model-config-model"
-                value={model}
-                onChange={(event) => setModel(event.target.value)}
-                placeholder={DEFAULT_MODEL}
-                autoComplete="off"
-              />
-            </ModelConfigField>
-            <ModelConfigField label="上下文长度" htmlFor="model-config-context-length" optional>
-              <Input
-                id="model-config-context-length"
-                value={contextLength}
-                onChange={(event) => setContextLength(event.target.value)}
-                placeholder="可选"
-                inputMode="numeric"
-              />
-            </ModelConfigField>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-3">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => fetchModels.mutate()}
-              disabled={!canFetch}
-            >
-              {fetchModels.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              测试并获取模型
-            </Button>
-            <Button type="button" onClick={() => saveConfig.mutate()} disabled={!canSave}>
-              {saveConfig.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              保存配置
-            </Button>
-            {!tauriRuntime ? (
-              <span className="text-sm text-muted-foreground">
-                浏览器预览不能写入本地配置。
-              </span>
-            ) : null}
-          </div>
-
-          {availableModels.length > 0 ? (
-            <div className="border-t border-border p-4">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h3 className="text-sm font-medium">模型列表</h3>
-                  <p className="mt-1 truncate text-xs text-muted-foreground">{modelsUrl}</p>
-                </div>
-                <Badge>{availableModels.length} 个模型</Badge>
-              </div>
-              <div className="grid max-h-72 gap-2 overflow-auto sm:grid-cols-2">
-                {availableModels.map((modelId) => (
-                  <Button
-                    key={modelId}
-                    type="button"
-                    variant="outline"
-                    onClick={() => setModel(modelId)}
-                    className={cn(
-                      "h-auto w-full min-w-0 justify-start rounded-md px-3 py-2 text-left text-sm",
-                      modelId === model && "border-primary bg-accent",
-                    )}
+        <div className="space-y-4">
+          <section className="rounded-lg border border-border">
+            <SectionHeader
+              icon={<Sparkles className="h-4 w-4" />}
+              title="主模型"
+              action={<ProviderStatusBadge configured={Boolean(currentInfo?.provider && currentInfo.model)} loading={loading} />}
+            />
+            {modelSettings.error ? (
+              <PanelNotice title="模型配置暂不可用" description={errorMessage(modelSettings.error)} />
+            ) : (
+              <div className="grid gap-4 p-4 md:grid-cols-[minmax(180px,0.7fr)_minmax(220px,1fr)_auto] md:items-end">
+                <ModelConfigField label="Provider">
+                  <Select
+                    value={selectedProvider}
+                    onValueChange={(value) => {
+                      setSelectedProvider(value);
+                      setSelectedModel("");
+                    }}
+                    disabled={loading || providers.length === 0}
                   >
-                    <span className="block truncate font-mono text-xs">{modelId}</span>
-                  </Button>
-                ))}
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="选择 provider" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {providers.map((provider) => (
+                        <SelectItem key={provider.slug} value={provider.slug}>
+                          {provider.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </ModelConfigField>
+
+                <ModelConfigField label="模型">
+                  <Select
+                    value={selectedModel}
+                    onValueChange={setSelectedModel}
+                    disabled={loading || selectedProviderModels.length === 0}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="选择模型" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {selectedProviderModels.map((model) => (
+                        <SelectItem key={model} value={model}>
+                          {model}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </ModelConfigField>
+
+                <Button type="button" onClick={() => applyMainModel.mutate()} disabled={!canApply}>
+                  {applyMainModel.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  应用
+                </Button>
               </div>
+            )}
+          </section>
+
+          <section className="rounded-lg border border-border">
+            <SectionHeader icon={<Cpu className="h-4 w-4" />} title="辅助模型" />
+            <div className="divide-y divide-border">
+              {modelSettings.data?.auxiliary?.tasks.length ? (
+                modelSettings.data.auxiliary.tasks.map((task) => (
+                  <AuxiliaryModelRow key={task.task} task={task} />
+                ))
+              ) : (
+                <PanelNotice title="没有辅助模型覆盖" description="Hermes 会默认使用主模型处理辅助任务。" />
+              )}
             </div>
-          ) : null}
-        </section>
+            <div className="border-t border-border px-4 py-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => resetAuxiliary.mutate()}
+                disabled={!currentInfo || resetAuxiliary.isPending}
+              >
+                {resetAuxiliary.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                全部重置为主模型
+              </Button>
+            </div>
+          </section>
+        </div>
 
         <aside className="space-y-4">
           <section className="rounded-lg border border-border">
-            <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-              <Server className="h-4 w-4" />
-              <h2 className="text-sm font-medium">当前配置</h2>
-            </div>
+            <SectionHeader icon={<Server className="h-4 w-4" />} title="当前状态" />
             <div className="grid divide-y divide-border">
-              <ConfigRow label="状态" value={current?.configured ? "已配置" : "未配置"} />
-              <ConfigRow label="Provider" value={current?.providerKey ?? "未设置"} mono />
-              <ConfigRow label="名称" value={current?.name ?? "未设置"} />
-              <ConfigRow label="服务地址" value={current?.baseUrl ?? "未设置"} mono />
-              <ConfigRow label="默认模型" value={current?.model ?? "未设置"} mono />
-              <ConfigRow label="API Key" value={current?.hasApiKey ? "已保存" : "未保存"} />
-              <ConfigRow label="配置文件" value={current?.configPath ?? "检查中"} mono />
+              <ConfigRow label="Provider" value={currentInfo?.provider ?? "检查中"} mono />
+              <ConfigRow label="模型" value={currentInfo?.model ?? "检查中"} mono />
+              <ConfigRow label="配置上下文" value={formatOptionalNumber(currentInfo?.config_context_length)} />
+              <ConfigRow label="有效上下文" value={formatOptionalNumber(currentInfo?.effective_context_length)} />
+              <ConfigRow label="Dashboard" value={status.data?.dashboardRunning ? "运行中" : "未运行"} />
             </div>
           </section>
 
           <section className="rounded-lg border border-border">
-            <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-              <KeyRound className="h-4 w-4" />
-              <h2 className="text-sm font-medium">写入格式</h2>
-            </div>
-            <div className="space-y-2 p-4 text-sm">
-              <CodeLine label="model.provider" value={`custom:${normalizeProviderName(name)}`} />
-              <CodeLine label="model.default" value={model.trim() || DEFAULT_MODEL} />
-              <CodeLine label="api_mode" value="chat_completions" />
+            <SectionHeader icon={<KeyRound className="h-4 w-4" />} title="Provider 凭证" />
+            <div className="space-y-3 p-4">
+              <ModelConfigField label="环境变量">
+                <Select
+                  value={credentialKey}
+                  onValueChange={setCredentialKey}
+                  disabled={credentialEntries.length === 0}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="选择凭证" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {credentialEntries.map(([key, info]) => (
+                      <SelectItem key={key} value={key}>
+                        {key}
+                        {info.is_set ? " · 已保存" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </ModelConfigField>
+              <ModelConfigField label="值">
+                <Input
+                  type="password"
+                  value={credentialValue}
+                  onChange={(event) => setCredentialValue(event.target.value)}
+                  placeholder={credentialKey ? "输入新的凭证值" : "先选择环境变量"}
+                  disabled={!credentialKey}
+                  autoComplete="off"
+                />
+              </ModelConfigField>
+              <Button type="button" onClick={() => saveCredential.mutate()} disabled={!canSaveCredential}>
+                {saveCredential.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                验证并保存
+              </Button>
+              <CredentialSummary entries={credentialEntries} />
             </div>
           </section>
         </aside>
@@ -305,29 +347,38 @@ export function ModelsPage() {
   );
 }
 
-function ModelConfigField({
-  htmlFor,
-  label,
-  optional = false,
-  children,
+function SectionHeader({
+  action,
+  icon,
+  title,
 }: {
-  htmlFor: string;
-  label: string;
-  optional?: boolean;
-  children: ReactNode;
+  action?: ReactNode;
+  icon: ReactNode;
+  title: string;
 }) {
   return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
+      <div className="flex items-center gap-2">
+        <div className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-muted">
+          {icon}
+        </div>
+        <h2 className="text-sm font-medium">{title}</h2>
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function ModelConfigField({ label, children }: { label: string; children: ReactNode }) {
+  return (
     <Field className="min-w-0 gap-2">
-      <FieldLabel htmlFor={htmlFor}>
-        {label}
-        {optional ? <span className="text-xs font-normal text-muted-foreground">可选</span> : null}
-      </FieldLabel>
+      <FieldLabel>{label}</FieldLabel>
       {children}
     </Field>
   );
 }
 
-function ProviderStatusBadge({ configured, loading }: { configured?: boolean; loading: boolean }) {
+function ProviderStatusBadge({ configured, loading }: { configured: boolean; loading: boolean }) {
   if (loading) {
     return (
       <Badge className="border-border bg-secondary text-muted-foreground">
@@ -354,6 +405,55 @@ function ProviderStatusBadge({ configured, loading }: { configured?: boolean; lo
   );
 }
 
+function AuxiliaryModelRow({
+  task,
+}: {
+  task: AuxiliaryModelsResponse["tasks"][number];
+}) {
+  const title = AUXILIARY_TASK_LABELS[task.task] ?? task.task;
+  return (
+    <div className="grid gap-2 px-4 py-3 text-sm md:grid-cols-[180px_1fr] md:items-center">
+      <div>
+        <div className="font-medium text-foreground">{title}</div>
+        <div className="mt-1 font-mono text-xs text-muted-foreground">{task.task}</div>
+      </div>
+      <div className="min-w-0 rounded-md border border-border bg-muted/45 px-3 py-2 font-mono text-xs">
+        <span className={cn(!task.provider || task.provider === "auto" ? "text-muted-foreground" : "text-foreground")}>
+          {!task.provider || task.provider === "auto" ? "auto · use main model" : `${task.provider} · ${task.model}`}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function CredentialSummary({ entries }: { entries: Array<[string, EnvVarInfo]> }) {
+  if (entries.length === 0) {
+    return <p className="text-xs leading-5 text-muted-foreground">当前 dashboard 没有暴露可编辑的模型凭证。</p>;
+  }
+
+  return (
+    <div className="space-y-1 border-t border-border pt-3">
+      {entries.slice(0, 8).map(([key, info]) => (
+        <div key={key} className="flex items-center justify-between gap-3 text-xs">
+          <span className="min-w-0 truncate font-mono">{key}</span>
+          <Badge className={cn("shrink-0 rounded-md", info.is_set ? "text-green-700" : "text-muted-foreground")}>
+            {info.is_set ? "已保存" : "未设置"}
+          </Badge>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PanelNotice({ description, title }: { description?: string; title: string }) {
+  return (
+    <div className="p-4 text-sm">
+      <div className="font-medium text-foreground">{title}</div>
+      {description ? <div className="mt-1 text-muted-foreground">{description}</div> : null}
+    </div>
+  );
+}
+
 function ConfigRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="grid grid-cols-[96px_1fr] gap-3 px-4 py-3 text-sm">
@@ -363,39 +463,18 @@ function ConfigRow({ label, value, mono = false }: { label: string; value: strin
   );
 }
 
-function CodeLine({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0 rounded-md border border-border bg-muted px-3 py-2">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-1 truncate font-mono text-xs">{value}</div>
-    </div>
-  );
+function modelCredentialEntries(env: Record<string, EnvVarInfo>): Array<[string, EnvVarInfo]> {
+  return Object.entries(env)
+    .filter(([, info]) => info.is_password || info.category.toLowerCase().includes("provider"))
+    .sort(([leftKey, left], [rightKey, right]) => {
+      if (left.is_set !== right.is_set) {
+        return left.is_set ? -1 : 1;
+      }
+
+      return leftKey.localeCompare(rightKey);
+    });
 }
 
-function parseContextLength(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  if (!/^\d+$/.test(trimmed)) {
-    throw new Error("上下文长度需要是正整数。");
-  }
-
-  const parsed = Number.parseInt(trimmed, 10);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new Error("上下文长度需要是正整数。");
-  }
-
-  return parsed;
-}
-
-function normalizeProviderName(value: string) {
-  const normalized = value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-  return normalized || DEFAULT_PROVIDER_NAME;
+function formatOptionalNumber(value: number | undefined) {
+  return typeof value === "number" && Number.isFinite(value) ? value.toLocaleString() : "未设置";
 }

@@ -30,7 +30,7 @@ import { errorMessage } from "@/lib/errors";
 import type { HermesMessage, HermesSession, HermesStreamEvent } from "@/lib/hermes";
 import { hermesQueryKeys, useHermesApi } from "@/lib/hermes/queries";
 import { cn } from "@/lib/utils";
-import { createHermesTuiSession, streamHermesSessionChat } from "@/lib/tauri";
+import { createHermesTuiSession, interruptHermesSession, streamHermesSessionChat } from "@/lib/tauri";
 
 interface ChatMessage {
   id: string;
@@ -109,7 +109,6 @@ const localCommands = [
   { name: "clear", insertText: "/clear", description: "清空当前聊天视图" },
   { name: "new", insertText: "/new", description: "开始一个新对话" },
   { name: "stop", insertText: "/stop", description: "停止当前生成" },
-  { name: "model", args: "模型 ID", insertText: "/model ", description: "临时切换模型" },
 ] as const satisfies readonly LocalCommand[];
 
 const composerEditorPlugins = [ReactListPlugin, ReactLinkPlugin, ReactCodeblockPlugin];
@@ -131,7 +130,6 @@ export function ChatPage() {
   const selectedSessionId = searchParams.get(chatSessionSearchParam);
   const [messagesBySession, setMessagesBySession] = useState<MessagesBySession>({});
   const [draft, setDraft] = useState("");
-  const [modelOverride, setModelOverride] = useState("");
   const [activeStreams, setActiveStreams] = useState<ActiveStreamMap>({});
   const [queuedPromptsBySession, setQueuedPromptsBySession] = useState<QueuedPromptsBySession>({});
   const [sendError, setSendError] = useState<string | null>(null);
@@ -142,6 +140,7 @@ export function ChatPage() {
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
   const handledPendingPromptRef = useRef<string | null>(null);
   const streamTokensRef = useRef<Map<string, number>>(new Map());
+  const runtimeSessionIdsRef = useRef<Map<string, string>>(new Map());
   const queuedPromptsRef = useRef<QueuedPromptsBySession>({});
   const selectedSessionIdRef = useRef<string | null>(null);
   const pendingInitialScrollSessionRef = useRef<string | null>(null);
@@ -343,6 +342,7 @@ export function ChatPage() {
       return;
     }
 
+    const runtimeSessionId = runtimeSessionIdsRef.current.get(sessionId);
     const currentToken = streamTokensRef.current.get(sessionId) ?? 0;
     streamTokensRef.current.set(sessionId, currentToken + 1);
     abortControllersRef.current.get(sessionId)?.abort();
@@ -353,12 +353,20 @@ export function ChatPage() {
         message.status === "streaming"
           ? {
               ...message,
-              content: message.content.trim() || "已停止生成。",
+              content: message.content.trim()
+                ? `${message.content.trim()}\n\n_[interrupted]_`
+                : "_[interrupted]_",
               status: "complete",
             }
           : message,
       ),
     );
+
+    if (runtimeSessionId) {
+      void interruptHermesSession(runtimeSessionId).catch((error) => {
+        toast.error(`停止失败：${errorMessage(error)}`);
+      });
+    }
   }, []);
 
   function handleNewChat() {
@@ -455,10 +463,11 @@ export function ChatPage() {
 
       const stream = streamHermesSessionChat({
         message: prompt,
-        model: normalizedModelOverride(modelOverride),
         sessionId,
+        onRuntimeSession: (runtimeSessionId, storedSessionId) => {
+          runtimeSessionIdsRef.current.set(storedSessionId, runtimeSessionId);
+        },
         signal: controller.signal,
-        title: titleFromPrompt(prompt),
         transientSessionId,
       });
 
@@ -472,6 +481,10 @@ export function ChatPage() {
 
         if (streamEvent.data === "[DONE]") {
           break;
+        }
+
+        if (streamEvent.sessionId) {
+          runtimeSessionIdsRef.current.set(sessionId, streamEvent.sessionId);
         }
 
         const streamError = streamEventError(streamEvent);
@@ -622,9 +635,8 @@ export function ChatPage() {
       return false;
     }
 
-    const [rawCommand = "", ...rest] = normalized.slice(1).split(/\s+/);
+    const [rawCommand = ""] = normalized.slice(1).split(/\s+/);
     const command = rawCommand.toLowerCase();
-    const args = rest.join(" ").trim();
 
     if (command === "clear") {
       if (selectedSessionId) {
@@ -646,12 +658,6 @@ export function ChatPage() {
         cancelActiveStream();
         toast.success("已停止生成");
       }
-      return true;
-    }
-
-    if (command === "model") {
-      setModelOverride(args);
-      toast.success(args ? `本次对话将使用 ${args}` : "已恢复默认模型");
       return true;
     }
 
@@ -800,8 +806,9 @@ export function ChatPage() {
 
   async function createChatSession(prompt: string) {
     const title = titleFromPrompt(prompt);
-    const session = await createHermesTuiSession(title);
+    const session = await createHermesTuiSession();
     const now = new Date().toISOString();
+    runtimeSessionIdsRef.current.set(session.storedSessionId, session.sessionId);
     const storedSession: HermesSession = {
       id: session.storedSessionId,
       source: "desktop-chat",
@@ -948,9 +955,6 @@ export function ChatPage() {
                         <ChevronDown className="h-3.5 w-3.5" />
                         命令
                       </button>
-                      {modelOverride.trim() ? (
-                        <Badge className="rounded-md border-primary/15 bg-primary/10 text-primary">模型 {modelOverride.trim()}</Badge>
-                      ) : null}
                       {queuedPrompts.length > 0 ? (
                         <Badge className="rounded-md bg-muted text-muted-foreground">队列 {queuedPrompts.length}</Badge>
                       ) : null}
@@ -2262,11 +2266,6 @@ function mergeSession(current: HermesSession[] | undefined, session: HermesSessi
 
 function titleFromPrompt(prompt: string): string {
   return prompt.replace(/\s+/g, " ").slice(0, 36) || "新对话";
-}
-
-function normalizedModelOverride(model: string): string | undefined {
-  const normalized = model.trim();
-  return normalized || undefined;
 }
 
 function readEditorMarkdown(editor: LobeEditor): string {

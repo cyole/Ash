@@ -47,31 +47,9 @@ export interface RuntimeConnection {
 
 export interface RuntimeDashboardApiInput {
   body?: unknown;
-  method?: "DELETE" | "GET" | "PATCH" | "POST";
+  method?: "DELETE" | "GET" | "PATCH" | "POST" | "PUT";
   path: string;
-}
-
-export interface OpenAICompatibleModelConfig {
-  name: string;
-  baseUrl: string;
-  apiKey: string;
-  model: string;
-  contextLength?: number | null;
-}
-
-export interface ModelConfigStatus {
-  configured: boolean;
-  providerKey: string | null;
-  name: string | null;
-  baseUrl: string | null;
-  model: string | null;
-  hasApiKey: boolean;
-  configPath: string;
-}
-
-export interface OpenAIModelsResult {
-  models: string[];
-  modelsUrl: string;
+  timeoutMs?: number;
 }
 
 export interface HermesExtensionsCatalog {

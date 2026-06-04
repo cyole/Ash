@@ -303,9 +303,10 @@ pub(crate) fn runtime_dashboard_api_impl(
     let path = validate_dashboard_api_path(&input.path)?;
     let method = parse_dashboard_api_method(input.method.as_deref().unwrap_or("GET"))?;
     let url = format!("{}{}", snapshot.api_url, path);
+    let timeout = dashboard_api_timeout(input.timeout_ms);
 
     let client = Client::builder()
-        .timeout(super::constants::HERMES_COMMAND_TIMEOUT)
+        .timeout(timeout)
         .build()
         .map_err(|error| error.to_string())?;
     let mut request = client
@@ -404,8 +405,16 @@ fn parse_dashboard_api_method(method: &str) -> Result<Method, String> {
         "GET" => Ok(Method::GET),
         "PATCH" => Ok(Method::PATCH),
         "POST" => Ok(Method::POST),
+        "PUT" => Ok(Method::PUT),
         other => Err(format!("不支持的 Hermes dashboard API 方法：{other}。")),
     }
+}
+
+fn dashboard_api_timeout(timeout_ms: Option<u64>) -> std::time::Duration {
+    timeout_ms
+        .filter(|timeout| *timeout > 0)
+        .map(std::time::Duration::from_millis)
+        .unwrap_or(super::constants::HERMES_COMMAND_TIMEOUT)
 }
 
 fn stop_dashboard_process() -> Result<RuntimeCommandResult, String> {

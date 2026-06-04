@@ -60,6 +60,7 @@ export interface SessionChatInput {
   message: string;
   model?: string;
   files?: string[];
+  onRuntimeSession?: (runtimeSessionId: string, storedSessionId: string) => void;
   signal?: AbortSignal;
   title?: string;
   transientSessionId?: string;
@@ -87,4 +88,5 @@ export interface ApprovalInput {
 export interface HermesStreamEvent {
   type: string;
   data: unknown;
+  sessionId?: string | null;
 }
