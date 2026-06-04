@@ -20,6 +20,22 @@ export interface HermesTuiSession {
   storedSessionId: string;
 }
 
+export interface WeixinQrCode {
+  qrcode: string;
+  qrcodeUrl: string;
+}
+
+export type WeixinQrStatusValue = "confirmed" | "expired" | "scaned" | "scaned_but_redirect" | "wait" | string;
+
+export interface WeixinQrStatus {
+  accountId?: string;
+  baseUrl?: string;
+  redirectHost?: string;
+  status: WeixinQrStatusValue;
+  token?: string;
+  userId?: string;
+}
+
 interface TuiRpcEvent {
   payload: unknown;
   sessionId: string | null;
@@ -167,6 +183,27 @@ export async function dashboardApi<T>(input: RuntimeDashboardApiInput): Promise<
   }
 
   return invoke<T>("runtime_dashboard_api", { input });
+}
+
+export async function getWeixinQrCode(): Promise<WeixinQrCode> {
+  if (!isTauriRuntime()) {
+    throw new Error("微信扫码登录仅在 Tauri 桌面应用中可用。");
+  }
+
+  return invoke<WeixinQrCode>("weixin_qrcode_get");
+}
+
+export async function pollWeixinQrStatus(qrcode: string, baseUrl?: string): Promise<WeixinQrStatus> {
+  if (!isTauriRuntime()) {
+    throw new Error("微信扫码登录仅在 Tauri 桌面应用中可用。");
+  }
+
+  return invoke<WeixinQrStatus>("weixin_qrcode_poll", {
+    input: {
+      baseUrl,
+      qrcode,
+    },
+  });
 }
 
 export async function createHermesTuiSession(title?: string): Promise<HermesTuiSession> {

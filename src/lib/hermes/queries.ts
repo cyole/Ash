@@ -10,6 +10,7 @@ export const hermesQueryKeys = {
   sessions: (apiUrl: string, hasSessionToken: boolean) => ["hermes-sessions", apiUrl, hasSessionToken] as const,
   models: (apiUrl: string, hasSessionToken: boolean) => ["hermes-models", apiUrl, hasSessionToken] as const,
   modelSettings: (apiUrl: string, hasSessionToken: boolean) => ["hermes-model-settings", apiUrl, hasSessionToken] as const,
+  messagingPlatforms: (apiUrl: string, hasSessionToken: boolean) => ["hermes-messaging-platforms", apiUrl, hasSessionToken] as const,
   sessionMessages: (apiUrl: string, hasSessionToken: boolean, sessionId: string | null) =>
     ["hermes-session-messages", apiUrl, hasSessionToken, sessionId] as const,
   toolsetConfig: (apiUrl: string, hasSessionToken: boolean, toolsetName: string) =>

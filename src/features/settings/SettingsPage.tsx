@@ -13,6 +13,7 @@ import {
   Gauge,
   KeyRound,
   Loader2,
+  MessageCircle,
   Monitor,
   MonitorCog,
   Moon,
@@ -34,6 +35,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { LobeRuntimeProvider } from "@/features/chat/components/LobeRuntimeProvider";
+import { MessagingSettingsPanel } from "@/features/messaging/MessagingSettingsPanel";
 import { MarkdownMessage } from "@/features/chat/components/MarkdownMessage";
 import { ModelSettingsPanel, ProviderSettingsPanel } from "@/features/models/ModelsPage";
 import {
@@ -70,7 +72,7 @@ import type { ModelInfoResponse } from "@/types/hermes-dashboard";
 import type { HermesStatus, RuntimeCommandResult } from "@/types/hermes";
 
 type RuntimeAction = "prepare" | "start" | "stop" | "status" | "doctor" | "portal" | "logs";
-type SettingsSectionId = "appearance" | "chat" | "model" | "providers" | "runtime" | "advanced" | "about";
+type SettingsSectionId = "appearance" | "chat" | "model" | "providers" | "messaging" | "runtime" | "advanced" | "about";
 
 interface SettingsSectionNav {
   id: SettingsSectionId;
@@ -122,6 +124,12 @@ const settingsSections: SettingsSectionNav[] = [
     label: "服务商设置",
     description: "API Key、代理地址和自定义 provider。",
     icon: <KeyRound className="h-4 w-4" />,
+  },
+  {
+    id: "messaging",
+    label: "消息渠道",
+    description: "微信、Telegram、Slack 等 Gateway 接入。",
+    icon: <MessageCircle className="h-4 w-4" />,
   },
   {
     id: "runtime",
@@ -336,6 +344,7 @@ export function SettingsPage() {
             {activeSection === "chat" ? <ChatAppearanceSection /> : null}
             {activeSection === "model" ? <ModelSection /> : null}
             {activeSection === "providers" ? <ProviderSection /> : null}
+            {activeSection === "messaging" ? <MessagingSection /> : null}
             {activeSection === "runtime" ? (
               <RuntimeSection
                 busy={busy}
@@ -510,6 +519,10 @@ function ModelSection() {
 
 function ProviderSection() {
   return <ProviderSettingsPanel />;
+}
+
+function MessagingSection() {
+  return <MessagingSettingsPanel />;
 }
 
 function RuntimeSection({

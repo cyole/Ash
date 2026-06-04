@@ -72,6 +72,8 @@ pub fn run() {
             commands::runtime::runtime_setup_portal,
             commands::settings::app_settings_load,
             commands::settings::app_settings_save,
+            commands::weixin::weixin_qrcode_get,
+            commands::weixin::weixin_qrcode_poll,
             commands::window::window_translucency_set
         ])
         .build(tauri::generate_context!())
